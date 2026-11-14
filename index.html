@@ -23,12 +23,10 @@ button:disabled{opacity:.38;cursor:default;background:transparent}
 button.on{background:var(--accent);color:#fff}
 #mapName{font:inherit;font-weight:600;color:var(--ink);background:transparent;border:1px solid transparent;border-radius:8px;padding:6px 8px;width:170px}
 #mapName:hover,#mapName:focus{border-color:var(--line);outline:none;background:var(--bg)}
-#stage{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;touch-action:none;cursor:grab;background-image:radial-gradient(var(--dot) 1.2px,transparent 1.3px);background-size:24px 24px;user-select:none;-webkit-user-select:none}
+#stage{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;touch-action:none;cursor:grab;background-image:radial-gradient(var(--dot) 1.2px,transparent 1.3px);background-size:24px 24px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 #stage.panning{cursor:grabbing}
 #cv{position:absolute;inset:0;width:100%;height:100%;display:block}
-.nd{cursor:pointer}
-.fd{opacity:0;cursor:pointer}
-.nd:hover .fd,.fd.on{opacity:1}
+#vp{pointer-events:none}
 #ed{position:absolute;left:0;top:0;margin:0;resize:none;overflow:hidden;font-family:inherit;text-align:center;color:var(--ink);background:var(--panel);border:2px solid var(--accent);outline:none;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:var(--shadow);user-select:text;-webkit-user-select:text}
 #ed.idle{opacity:0;width:2px;height:2px;padding:0;border:0;pointer-events:none;box-shadow:none}
 #hint{position:absolute;left:12px;bottom:10px;color:var(--sub);font-size:12px;pointer-events:none;background:var(--bg);opacity:.9;padding:3px 8px;border-radius:6px;max-width:calc(100% - 24px);white-space:normal}
@@ -62,7 +60,7 @@ button.on{background:var(--accent);color:#fff}
   <div class="grp"><button id="bChild" type="button" title="子を追加（Tab）">＋ 子</button><button id="bSib" type="button" title="同じ階層に追加（Enter）">＋ 並び</button><button id="bEdit" type="button" title="文字を直す（F2 かダブルクリック）">編集</button><button id="bDel" type="button" title="消す（Delete）">削除</button></div>
   <div class="grp"><button id="bColor" type="button" title="色を変える">色</button><button id="bFold" type="button" title="下の枝をたたむ／ひらく">たたむ</button><button id="bLink" type="button" title="離れた2つを点線でつなぐ">点線でつなぐ</button></div>
   <div class="grp"><button id="bUndo" type="button" title="元に戻す（Ctrl+Z）">↶ 戻す</button><button id="bRedo" type="button" title="やり直す（Ctrl+Y）">↷</button></div>
-  <div class="grp"><button id="bTidy" type="button" title="動かした位置をやめて、自動の並びに戻す">整列</button><button id="bDir" type="button" title="枝を伸ばす向き">向き: 右</button><button id="bFit" type="button" title="全体が見えるように合わせる">全体</button><button id="bZo" type="button" title="縮小">−</button><button id="bZi" type="button" title="拡大">＋</button></div>
+  <div class="grp"><button id="bMove" type="button" title="箱をつかんだ時に、その箱だけ動かすか、下の枝ごと動かすか">動かし方: 1つ</button><button id="bTidy" type="button" title="動かした位置をやめて、自動の並びに戻す">整列</button><button id="bDir" type="button" title="枝を伸ばす向き">向き: 右</button><button id="bFit" type="button" title="全体が見えるように合わせる">全体</button><button id="bZo" type="button" title="縮小">−</button><button id="bZi" type="button" title="拡大">＋</button></div>
   <div class="sp"></div>
   <div class="grp"><button id="bOut" type="button" title="画像・印刷・保存・共有">書き出し ▾</button><button id="bHelp" type="button" title="使い方">？</button></div>
 </header>
@@ -285,16 +283,34 @@ function computeLayout(M, measure){
   for (const r of M.roots){ size(r, 0); ext(r); const n = M.nodes[r]; place(r, n.xy[0], n.xy[1]); }
   return geo;
 }
-/* 2つの箱を結ぶ曲線。mode が 'h' なら左右の辺、'v' なら上下の辺から出す。指定が無ければ、離れている向きで決める。 */
-function edgePath(a, b, mode){
+/* 2つの箱を結ぶ曲線（3次ベジェ）の8つの数。mode が 'h' なら左右の辺、'v' なら上下の辺から出す。指定が無ければ、離れている向きで決める。 */
+function edgeCurve(a, b, mode){
   const dx = b.x - a.x, dy = b.y - a.y;
   const gx = Math.abs(dx) - (a.w + b.w) / 2, gy = Math.abs(dy) - (a.h + b.h) / 2;
   if (mode === 'h' || (mode !== 'v' && gx >= gy)){
     const s = dx >= 0 ? 1 : -1; const x1 = a.x + s * a.w / 2, x2 = b.x - s * b.w / 2, mx = (x1 + x2) / 2;
-    return 'M' + r1(x1) + ' ' + r1(a.y) + 'C' + r1(mx) + ' ' + r1(a.y) + ' ' + r1(mx) + ' ' + r1(b.y) + ' ' + r1(x2) + ' ' + r1(b.y);
+    return [x1, a.y, mx, a.y, mx, b.y, x2, b.y];
   }
   const s = dy >= 0 ? 1 : -1; const y1 = a.y + s * a.h / 2, y2 = b.y - s * b.h / 2, my = (y1 + y2) / 2;
-  return 'M' + r1(a.x) + ' ' + r1(y1) + 'C' + r1(a.x) + ' ' + r1(my) + ' ' + r1(b.x) + ' ' + r1(my) + ' ' + r1(b.x) + ' ' + r1(y2);
+  return [a.x, y1, a.x, my, b.x, my, b.x, y2];
+}
+function edgePath(a, b, mode){
+  const c = edgeCurve(a, b, mode);
+  return 'M' + r1(c[0]) + ' ' + r1(c[1]) + 'C' + r1(c[2]) + ' ' + r1(c[3]) + ' ' + r1(c[4]) + ' ' + r1(c[5]) + ' ' + r1(c[6]) + ' ' + r1(c[7]);
+}
+/* 点 (px,py) から曲線までの、おおよその距離（曲線を細かく区切って測る）。点線を押したかどうかの判定に使う。 */
+function curveDist(c, px, py){
+  let best = Infinity, lx = c[0], ly = c[1];
+  for (let i = 1; i <= 32; i++){
+    const t = i / 32, u = 1 - t;
+    const x = u * u * u * c[0] + 3 * u * u * t * c[2] + 3 * u * t * t * c[4] + t * t * t * c[6];
+    const y = u * u * u * c[1] + 3 * u * u * t * c[3] + 3 * u * t * t * c[5] + t * t * t * c[7];
+    const vx = x - lx, vy = y - ly, len = vx * vx + vy * vy;
+    let k = len ? ((px - lx) * vx + (py - ly) * vy) / len : 0; k = Math.max(0, Math.min(1, k));
+    const d = Math.hypot(px - (lx + vx * k), py - (ly + vy * k)); if (d < best) best = d;
+    lx = x; ly = y;
+  }
+  return best;
 }
 function boundsOf(geo){
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -330,6 +346,10 @@ let sel = null, selLink = null, dropId = null, linkFrom = null;
 let editing = false, editNew = false;
 let hist = [], hi = -1, saveT = 0, toastT = 0;
 let menuAnchor = null;
+const PKEY = 'mm_prefs_v1';
+let prefs = { branch: false };
+try { const pp = JSON.parse(localStorage.getItem(PKEY) || 'null'); if (pp && typeof pp === 'object') prefs.branch = !!pp.branch; } catch (e){}
+function savePrefs(){ try { localStorage.setItem(PKEY, JSON.stringify(prefs)); } catch (e){} }
 
 /* ---------- 保存（このブラウザの中だけ。外へは送らない） ---------- */
 function loadStore(){
@@ -359,7 +379,7 @@ function sampleMap(){
   const m = newMap('はじめてのマップ');
   const a = opAddChild(m, 'n1', 'Tab で子を追加'); opAddChild(m, a, '文字を打つとそのまま書き換え');
   opAddChild(m, 'n1', 'Enter で同じ階層に追加');
-  const c = opAddChild(m, 'n1', 'ドラッグで動かす'); opAddChild(m, c, '別の項目に重ねると付け替え');
+  const c = opAddChild(m, 'n1', 'ドラッグで動かす'); opAddChild(m, c, '別の箱の上で止めて離すと付け替え');
   opAddChild(m, 'n1', '何も無い所をダブルクリックで新しいかたまり');
   return m;
 }
@@ -400,10 +420,10 @@ function scene(o){
       for (let i = 0; i < g.lines.length; i++) N += '<tspan x="' + r1(g.w / 2) + '" y="' + r1(st.py + st.lh * i + st.lh * 0.72) + '">' + esc(g.lines[i]) + '</tspan>';
       N += '</text>';
     }
-    if (n.k.length && (o.screen || n.f)){
+    if (n.k.length && (n.f || (o.screen && g.id === o.sel))){
       const cx = down ? g.w / 2 : g.w + 11, cy = down ? g.h + 11 : g.h / 2;
       const label = n.f ? String(descendants(M, g.id).length - 1) : '−';
-      N += '<g class="fd' + (n.f || g.id === o.sel ? ' on' : '') + '" data-fold="' + g.id + '"><circle cx="' + r1(cx) + '" cy="' + r1(cy) + '" r="9" fill="' + base + '" stroke="' + stroke(ci) + '" stroke-width="1.5"/><text x="' + r1(cx) + '" y="' + r1(cy + 3.6) + '" font-family="' + FF + '" font-size="10" font-weight="700" fill="' + ink + '" text-anchor="middle">' + label + '</text></g>';
+      N += '<g data-fold="' + g.id + '"><circle cx="' + r1(cx) + '" cy="' + r1(cy) + '" r="9" fill="' + base + '" stroke="' + stroke(ci) + '" stroke-width="1.5"/><text x="' + r1(cx) + '" y="' + r1(cy + 3.6) + '" font-family="' + FF + '" font-size="10" font-weight="700" fill="' + ink + '" text-anchor="middle">' + label + '</text></g>';
     }
     N += '</g>';
   }
@@ -411,7 +431,6 @@ function scene(o){
     const a = geo.get(l.a), b = geo.get(l.b); if (!a || !b) continue;
     const d = edgePath(a, b); const on = o.screen && l.id === o.selLink;
     L += '<path d="' + d + '" fill="none" stroke="' + (on ? acc : lk) + '" stroke-width="' + (on ? 2.8 : 1.7) + '" stroke-dasharray="6 5" stroke-linecap="round"/>';
-    if (o.screen) L += '<path data-link="' + l.id + '" d="' + d + '" fill="none" stroke="transparent" stroke-width="16" pointer-events="stroke" style="cursor:pointer"/>';
   }
   return E + L + N;
 }
@@ -430,8 +449,9 @@ function updateBar(){
   $('bLink').disabled = !n && !linkFrom; $('bLink').classList.toggle('on', !!linkFrom);
   $('bUndo').disabled = hi <= 0; $('bRedo').disabled = hi >= hist.length - 1;
   $('bDir').textContent = '向き: ' + (M.dir === 'down' ? '下' : '右');
+  $('bMove').textContent = '動かし方: ' + (prefs.branch ? '枝ごと' : '1つ');
   hint.textContent = linkFrom ? 'つなぐ相手の項目を押す（やめる時は Esc か、何も無い所を押す）'
-    : DESKTOP ? 'Tab: 子を追加　Enter: 同じ階層に追加　文字を打つ: 書き換え　ドラッグ: 移動　Ctrl+ホイール: 拡大縮小'
+    : DESKTOP ? 'Tab: 子を追加　Enter: 同じ階層に追加　文字を打つ: 書き換え　ドラッグ: 箱を動かす　Ctrl+ホイール: 拡大縮小'
     : '項目を押して選び、上のボタンで足す。2回続けて押すと文字を直せる。2本指で拡大縮小';
 }
 function applyView(){
@@ -582,13 +602,20 @@ function navigate(key){
   if (tgt) select(tgt);
 }
 
-/* ---------- マウス・タッチ ---------- */
+/* ---------- マウス・タッチ ----------
+   図の中の要素はポインターを受けない（#vp は pointer-events:none）。どこを押したかは座標から求める。
+   押している最中に図を描き直しても、押された要素が消えて操作が途切れることが無い。 */
 const ptrs = new Map(); let drag = null; let lastTap = { t: 0, x: 0, y: 0, key: '' };
-function hitOf(t){
-  if (!t || !t.closest) return {};
-  const f = t.closest('[data-fold]'); if (f) return { fold: f.getAttribute('data-fold') };
-  const l = t.closest('[data-link]'); if (l) return { link: l.getAttribute('data-link') };
-  const n = t.closest('[data-id]'); if (n) return { node: n.getAttribute('data-id') };
+function foldDotAt(g){ const down = M.dir === 'down'; return { x: g.x - g.w / 2 + (down ? g.w / 2 : g.w + 11), y: g.y - g.h / 2 + (down ? g.h + 11 : g.h / 2) }; }
+function hitAt(wx, wy){
+  for (const g of geo.values()){
+    const n = M.nodes[g.id]; if (!n.k.length || !(n.f || g.id === sel)) continue;
+    const c = foldDotAt(g); if (Math.hypot(wx - c.x, wy - c.y) <= Math.max(10, 13 / S)) return { fold: g.id };
+  }
+  let node = null;
+  for (const g of geo.values()) if (Math.abs(wx - g.x) <= g.w / 2 && Math.abs(wy - g.y) <= g.h / 2) node = g.id;
+  if (node) return { node: node };
+  for (const l of M.links){ const a = geo.get(l.a), b = geo.get(l.b); if (a && b && curveDist(edgeCurve(a, b), wx, wy) <= Math.max(5, 9 / S)) return { link: l.id }; }
   return {};
 }
 function findDrop(id, wx, wy){
@@ -615,9 +642,12 @@ stage.addEventListener('pointerdown', e => {
   closeMenu();
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   try { stage.setPointerCapture(e.pointerId); } catch (err){}
-  if (ptrs.size === 2){ dropId = null; startPinch(); return; }
+  if (ptrs.size === 2){
+    if (drag && drag.type === 'node'){ clearTimeout(drag.timer); if (drag.moved) commit(); }
+    dropId = null; startPinch(); return;
+  }
   if (ptrs.size > 2) return;
-  const hit = hitOf(e.target), w = toWorld(e.clientX, e.clientY);
+  const w = toWorld(e.clientX, e.clientY), hit = hitAt(w.x, w.y);
   if (hit.fold){ drag = { type: 'none' }; sel = hit.fold; selLink = null; actFold(hit.fold); return; }
   if (hit.link){ drag = { type: 'none' }; sel = null; selLink = hit.link; linkFrom = null; render(); return; }
   if (hit.node){
@@ -628,14 +658,17 @@ stage.addEventListener('pointerdown', e => {
     }
     sel = hit.node; selLink = null; ed.value = ''; render();
     const g = geo.get(hit.node);
-    drag = { type: 'node', id: hit.node, ox: w.x - g.x, oy: w.y - g.y, sx: e.clientX, sy: e.clientY, moved: false };
+    drag = { type: 'node', id: hit.node, ox: w.x - g.x, oy: w.y - g.y, sx: e.clientX, sy: e.clientY, moved: false, started: false, kids: [], cand: null, timer: 0 };
   } else {
     if (linkFrom){ linkFrom = null; render(); }
     drag = { type: 'pan', sx: e.clientX, sy: e.clientY, tx: TX, ty: TY, moved: false };
   }
 });
 stage.addEventListener('pointermove', e => {
-  if (!ptrs.has(e.pointerId)) return;
+  if (!ptrs.has(e.pointerId)){
+    if (e.pointerType === 'mouse' && e.target !== ed && !drag){ const w = toWorld(e.clientX, e.clientY), h = hitAt(w.x, w.y); stage.style.cursor = (h.node || h.fold || h.link) ? 'pointer' : ''; }
+    return;
+  }
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (!drag) return;
   if (drag.type === 'pinch'){ doPinch(); return; }
@@ -645,9 +678,21 @@ stage.addEventListener('pointermove', e => {
   drag.moved = true;
   if (drag.type === 'pan'){ stage.classList.add('panning'); TX = drag.tx + dx; TY = drag.ty + dy; applyView(); return; }
   const n = M.nodes[drag.id]; if (!n) return;
+  if (!drag.started){
+    /* 動かし始め。つかんだ箱だけを動かす時は、すぐ下の箱の今の位置を覚えておき、動かすたびに元の場所へ置き直す。 */
+    drag.started = true;
+    drag.alone = e.altKey ? prefs.branch : !prefs.branch;
+    if (drag.alone && !n.f) for (const k of n.k){ const kg = geo.get(k); if (kg) drag.kids.push({ id: k, x: kg.x, y: kg.y, m: M.nodes[k].m ? M.nodes[k].m.slice() : null }); }
+  }
   const w = toWorld(e.clientX, e.clientY), nx = w.x - drag.ox, ny = w.y - drag.oy;
   if (n.p == null) n.xy = [r1(nx), r1(ny)]; else { const pg = geo.get(n.p); n.m = [r1(nx - pg.x), r1(ny - pg.y)]; }
-  dropId = e.shiftKey ? null : findDrop(drag.id, w.x, w.y);
+  for (const k of drag.kids) M.nodes[k.id].m = [r1(k.x - nx), r1(k.y - ny)];
+  /* 付け替えは、別の箱の上で少し止めた時だけ。通り過ぎただけでは起きない。 */
+  const cand = e.shiftKey ? null : findDrop(drag.id, w.x, w.y);
+  if (cand !== drag.cand){
+    const d = drag; d.cand = cand; clearTimeout(d.timer); dropId = null;
+    if (cand) d.timer = setTimeout(() => { if (drag === d && d.cand === cand){ dropId = cand; render(); } }, 350);
+  }
   render();
 });
 function tapped(e, key){
@@ -669,9 +714,14 @@ function pointerEnd(e){
   drag = null;
   if (!d || d.type === 'none'){ focusGhost(); return; }
   if (d.type === 'node'){
+    clearTimeout(d.timer);
     if (d.moved){
       const tgt = dropId; dropId = null;
-      if (tgt){ if (!opReparent(M, d.id, tgt)) toast('そこへは付け替えられない'); }
+      if (tgt){
+        /* 付け替える時は、下の枝を連れて行く（置き直していた分を元に戻す）。 */
+        for (const k of d.kids){ const kn = M.nodes[k.id]; if (!kn) continue; if (k.m) kn.m = k.m; else delete kn.m; }
+        if (!opReparent(M, d.id, tgt)) toast('そこへは付け替えられない');
+      }
       else if (e.shiftKey && M.nodes[d.id] && M.nodes[d.id].p != null){ const g = geo.get(d.id); opDetach(M, d.id, g.x, g.y); }
       commit();
     } else if (e.type !== 'pointercancel' && tapped(e, 'n:' + d.id)) return;
@@ -782,12 +832,12 @@ function showHelp(){
   const rows = [
     ['項目を足す', 'Tab で子、Enter で同じ階層。上の「＋ 子」「＋ 並び」でも同じ。'],
     ['文字を直す', '選んでそのまま打つと書き換え。F2 かダブルクリックで続きから直す。Shift+Enter で改行。'],
-    ['動かす', '項目をドラッグ。下の枝も一緒に動く。「整列」で自動の並びに戻る。'],
-    ['付け替える', '動かして、別の項目に重ねて離す。'],
+    ['動かす', '箱をドラッグ。つかんだ箱だけが動く。上の「動かし方」を「枝ごと」にすると、下の枝も一緒に動く（Alt を押しながら動かすと、その時だけ逆になる）。「整列」で自動の並びに戻る。'],
+    ['付け替える', '動かして、別の箱の上で少し止めると枠が出る。そこで離す。通り過ぎるだけなら付け替わらない。'],
     ['切り離す', 'Shift を押しながら動かして離すと、独立したかたまりになる。'],
     ['新しいかたまり', '何も無い所をダブルクリック。'],
     ['離れた2つをつなぐ', '項目を選んで「点線でつなぐ」を押し、相手を押す。点線を押して Delete で消える。'],
-    ['たたむ', '項目の端の丸を押す。たたむと、隠れている数が出る。'],
+    ['たたむ', '箱を選ぶと端に丸が出るので、それを押す。たたむと、隠れている数が出る。'],
     ['画面を動かす', '何も無い所をドラッグするか、ホイール。拡大縮小は Ctrl+ホイールか2本指。'],
     ['選択を移す', '矢印キー。Alt+矢印で並び順を入れ替える。'],
     ['まとめて足す', '字下げした箇条書きをコピーし、項目を選んで貼り付けると、枝ごと入る。'],
@@ -864,6 +914,7 @@ function bind(id, fn){ $(id).addEventListener('click', () => { fn(); focusGhost(
 bind('bChild', actChild); bind('bSib', actSib); bind('bEdit', () => { if (sel) beginEdit('keep'); }); bind('bDel', actDelete);
 bind('bFold', () => actFold()); bind('bLink', actLinkMode);
 bind('bUndo', () => restore(hi - 1)); bind('bRedo', () => restore(hi + 1));
+bind('bMove', () => { prefs.branch = !prefs.branch; savePrefs(); updateBar(); toast(prefs.branch ? '箱を動かすと、下の枝も一緒に動く' : '動くのは、つかんだ箱だけ'); });
 bind('bTidy', actTidy); bind('bDir', actDir); bind('bFit', fit); bind('bZo', () => zoomBy(1 / 1.25)); bind('bZi', () => zoomBy(1.25));
 $('bHelp').addEventListener('click', showHelp);
 $('bColor').addEventListener('click', () => openMenu($('bColor'), m => {
@@ -910,9 +961,9 @@ async function start(){
   if (bad) toast('リンクを読み取れなかった');
   focusGhost();
   window.__mm = {
-    core: { newMap, sanitizeMap, opAddChild, opAddRoot, opDelete, opReparent, opDetach, opReorder, opLink, opUnlink, parseOutline, outlineOf, computeLayout, wrap, edgePath, boundsOf, b64u, unb64u },
+    core: { newMap, sanitizeMap, opAddChild, opAddRoot, opDelete, opReparent, opDetach, opReorder, opLink, opUnlink, parseOutline, outlineOf, computeLayout, wrap, edgePath, edgeCurve, curveDist, boundsOf, b64u, unb64u },
     get M(){ return M; }, get geo(){ return geo; }, get sel(){ return sel; }, get selLink(){ return selLink; }, get editing(){ return editing; }, get view(){ return { S: S, TX: TX, TY: TY }; }, get store(){ return store; },
-    get hist(){ return { n: hist.length, i: hi }; }, makeLink: makeLink, svg: () => svgParts(), ready: true
+    get hist(){ return { n: hist.length, i: hi }; }, get prefs(){ return prefs; }, hitAt: hitAt, makeLink: makeLink, svg: () => svgParts(), ready: true
   };
 }
 start();
