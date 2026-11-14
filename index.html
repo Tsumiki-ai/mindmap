@@ -1,0 +1,922 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src blob: data:">
+<meta name="referrer" content="no-referrer">
+<title>マインドマップ</title>
+<style>
+:root{--bg:#f4f6f9;--panel:#ffffff;--ink:#1c2330;--sub:#5b6676;--line:#d5dae2;--accent:#2f6fde;--dot:#d9dee6;--hover:#eef2f8;--shadow:0 6px 24px rgba(20,30,50,.16)}
+@media (prefers-color-scheme:dark){:root{--bg:#14171c;--panel:#1d2128;--ink:#e8ebf0;--sub:#9aa5b5;--line:#343b47;--accent:#6ea1ff;--dot:#272d37;--hover:#272d37;--shadow:0 6px 24px rgba(0,0,0,.5)}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,"Segoe UI","Hiragino Sans","Yu Gothic UI",Meiryo,sans-serif;overflow:hidden;-webkit-text-size-adjust:100%}
+header{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--line);overflow-x:auto;white-space:nowrap;flex:none;scrollbar-width:thin}
+.grp{display:flex;align-items:center;gap:4px;flex:none}
+.grp + .grp{padding-left:10px;border-left:1px solid var(--line)}
+.sp{flex:1 1 auto;min-width:4px}
+.sp + .grp{border-left:0;padding-left:0}
+button{font:inherit;color:var(--ink);background:transparent;border:1px solid transparent;border-radius:8px;padding:6px 9px;cursor:pointer;line-height:1.2}
+button:hover{background:var(--hover)}
+button:disabled{opacity:.38;cursor:default;background:transparent}
+button.on{background:var(--accent);color:#fff}
+#mapName{font:inherit;font-weight:600;color:var(--ink);background:transparent;border:1px solid transparent;border-radius:8px;padding:6px 8px;width:170px}
+#mapName:hover,#mapName:focus{border-color:var(--line);outline:none;background:var(--bg)}
+#stage{position:relative;flex:1 1 auto;min-height:0;overflow:hidden;touch-action:none;cursor:grab;background-image:radial-gradient(var(--dot) 1.2px,transparent 1.3px);background-size:24px 24px;user-select:none;-webkit-user-select:none}
+#stage.panning{cursor:grabbing}
+#cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+.nd{cursor:pointer}
+.fd{opacity:0;cursor:pointer}
+.nd:hover .fd,.fd.on{opacity:1}
+#ed{position:absolute;left:0;top:0;margin:0;resize:none;overflow:hidden;font-family:inherit;text-align:center;color:var(--ink);background:var(--panel);border:2px solid var(--accent);outline:none;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:var(--shadow);user-select:text;-webkit-user-select:text}
+#ed.idle{opacity:0;width:2px;height:2px;padding:0;border:0;pointer-events:none;box-shadow:none}
+#hint{position:absolute;left:12px;bottom:10px;color:var(--sub);font-size:12px;pointer-events:none;background:var(--bg);opacity:.9;padding:3px 8px;border-radius:6px;max-width:calc(100% - 24px);white-space:normal}
+#toast{position:absolute;left:50%;bottom:48px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:999px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90%;white-space:normal;text-align:center}
+#toast.show{opacity:.94}
+.menu{position:fixed;z-index:20;min-width:210px;max-width:min(340px,92vw);max-height:70vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:6px}
+.menu button{display:block;width:100%;text-align:left;padding:8px 10px;white-space:normal}
+.menu .cur{font-weight:700}
+.menu hr{border:0;border-top:1px solid var(--line);margin:6px 2px}
+.sw{display:flex;gap:8px;padding:6px 8px;flex-wrap:wrap}
+.menu .sw button{width:30px;height:30px;padding:0;border-radius:50%;border:2px solid var(--panel);box-shadow:0 0 0 1px var(--line)}
+.modal{position:fixed;inset:0;z-index:30;background:rgba(10,15,25,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.modal[hidden],.menu[hidden]{display:none}
+.card{background:var(--panel);border-radius:14px;box-shadow:var(--shadow);max-width:580px;width:100%;max-height:86vh;overflow:auto;padding:18px 20px}
+.card h2{margin:0 0 10px;font-size:17px}
+.card p{margin:8px 0}
+.card table{border-collapse:collapse;width:100%}
+.card td{padding:6px;border-top:1px solid var(--line);vertical-align:top}
+.card td:first-child{white-space:nowrap;color:var(--sub);width:34%}
+.card .row{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.card .row button{border-color:var(--line)}
+.card .row .pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+.card textarea{width:100%;height:110px;font:12px/1.4 ui-monospace,Consolas,monospace;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}
+#printbox{display:none}
+@media print{header,#stage,.menu,.modal{display:none !important}body{display:block;background:#fff;overflow:visible}#printbox{display:block}#printbox svg{display:block;width:100%;height:auto;max-height:186mm}@page{size:A4 landscape;margin:10mm}}
+</style>
+</head>
+<body>
+<header>
+  <div class="grp"><input id="mapName" maxlength="60" aria-label="マップの名前" spellcheck="false"><button id="bMaps" type="button" title="マップの一覧">一覧 ▾</button></div>
+  <div class="grp"><button id="bChild" type="button" title="子を追加（Tab）">＋ 子</button><button id="bSib" type="button" title="同じ階層に追加（Enter）">＋ 並び</button><button id="bEdit" type="button" title="文字を直す（F2 かダブルクリック）">編集</button><button id="bDel" type="button" title="消す（Delete）">削除</button></div>
+  <div class="grp"><button id="bColor" type="button" title="色を変える">色</button><button id="bFold" type="button" title="下の枝をたたむ／ひらく">たたむ</button><button id="bLink" type="button" title="離れた2つを点線でつなぐ">点線でつなぐ</button></div>
+  <div class="grp"><button id="bUndo" type="button" title="元に戻す（Ctrl+Z）">↶ 戻す</button><button id="bRedo" type="button" title="やり直す（Ctrl+Y）">↷</button></div>
+  <div class="grp"><button id="bTidy" type="button" title="動かした位置をやめて、自動の並びに戻す">整列</button><button id="bDir" type="button" title="枝を伸ばす向き">向き: 右</button><button id="bFit" type="button" title="全体が見えるように合わせる">全体</button><button id="bZo" type="button" title="縮小">−</button><button id="bZi" type="button" title="拡大">＋</button></div>
+  <div class="sp"></div>
+  <div class="grp"><button id="bOut" type="button" title="画像・印刷・保存・共有">書き出し ▾</button><button id="bHelp" type="button" title="使い方">？</button></div>
+</header>
+<main id="stage"><svg id="cv" xmlns="http://www.w3.org/2000/svg"><g id="vp"></g></svg><textarea id="ed" class="idle" rows="1" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="項目の文字"></textarea><div id="hint"></div><div id="toast" role="status"></div></main>
+<div id="menu" class="menu" hidden></div>
+<div id="modal" class="modal" hidden><div class="card" id="card"></div></div>
+<div id="printbox"></div>
+<input type="file" id="fileIn" accept=".json,application/json" hidden>
+<script>
+(() => {
+'use strict';
+/*CORE-BEGIN*/
+const NL = String.fromCharCode(10), CR = String.fromCharCode(13), TAB = String.fromCharCode(9);
+const FF = "system-ui, 'Segoe UI', 'Hiragino Sans', 'Yu Gothic UI', Meiryo, sans-serif";
+const ST = { fs: 14, fw: 500, lh: 20, px: 14, py: 9, maxw: 230, minw: 46 };
+const ST_ROOT = { fs: 16, fw: 700, lh: 23, px: 18, py: 12, maxw: 260, minw: 64 };
+ST.font = ST.fw + ' ' + ST.fs + 'px ' + FF;
+ST_ROOT.font = ST_ROOT.fw + ' ' + ST_ROOT.fs + 'px ' + FF;
+const GAPH = 54, GAPV = 14, GAPD = 44, GAPDV = 18;
+const COL = ['#64748b', '#2f6fde', '#1f9d6b', '#d9822b', '#d64545', '#8757d6', '#1798a8'];
+const NOSTART = '、。，．,.）)」』】〕］}？！?!：；:;ー・％%';
+const NOEND = '（(「『【〔［{';
+const r1 = v => Math.round(v * 10) / 10;
+
+/* 項目の番号は英小文字と数字だけ。画面に埋め込む値なので、読み込んだデータでも必ずここを通す。 */
+function okId(id){
+  if (typeof id !== 'string' || id.length < 1 || id.length > 12) return false;
+  for (let i = 0; i < id.length; i++){ const c = id.charCodeAt(i); if (!((c >= 48 && c <= 57) || (c >= 97 && c <= 122))) return false; }
+  return true;
+}
+function newMap(name){
+  return { v: 1, name: name || '新しいマップ', dir: 'right', seq: 1, nodes: { n1: { id: 'n1', t: 'テーマ', p: null, k: [], xy: [0, 0] } }, roots: ['n1'], links: [] };
+}
+function nid(M){ let id; do { M.seq = (M.seq || 0) + 1; id = 'n' + M.seq.toString(36); } while (M.nodes[id]); return id; }
+
+/* 外から来たデータ（保存ファイル・共有リンク・ブラウザの保存領域）を、形を確かめながら作り直す。 */
+function sanitizeMap(o){
+  if (!o || typeof o !== 'object' || !o.nodes || typeof o.nodes !== 'object' || !Array.isArray(o.roots)) return null;
+  const M = { v: 1, name: String(o.name == null ? 'マップ' : o.name).slice(0, 60) || 'マップ', dir: o.dir === 'down' ? 'down' : 'right', seq: 0, nodes: {}, roots: [], links: [] };
+  const seen = new Set(); let count = 0;
+  const num2 = a => (Array.isArray(a) && a.length === 2 && typeof a[0] === 'number' && typeof a[1] === 'number' && isFinite(a[0]) && isFinite(a[1])) ? [r1(Math.max(-1e6, Math.min(1e6, a[0]))), r1(Math.max(-1e6, Math.min(1e6, a[1])))] : null;
+  function take(id, p, depth){
+    if (!okId(id) || seen.has(id) || count >= 3000 || depth > 400) return false;
+    const s = o.nodes[id]; if (!s || typeof s !== 'object') return false;
+    seen.add(id); count++;
+    const n = { id: id, t: String(s.t == null ? '' : s.t).slice(0, 2000), p: p, k: [] };
+    if (Number.isInteger(s.c) && s.c >= 0 && s.c < COL.length) n.c = s.c;
+    if (s.f) n.f = true;
+    if (p == null){ n.xy = num2(s.xy) || [0, 0]; } else { const m = num2(s.m); if (m) n.m = m; }
+    M.nodes[id] = n;
+    if (Array.isArray(s.k)) for (const k of s.k){ const ks = String(k); if (take(ks, id, depth + 1)) n.k.push(ks); }
+    return true;
+  }
+  for (const r of o.roots){ const rs = String(r); if (take(rs, null, 0)) M.roots.push(rs); }
+  if (!M.roots.length) return null;
+  let mx = 0;
+  for (const id of Object.keys(M.nodes)){ if (id[0] === 'n'){ const v = parseInt(id.slice(1), 36); if (isFinite(v) && v > mx) mx = v; } }
+  M.seq = Math.min(Math.max(mx, count), 2e9);
+  if (Array.isArray(o.links)) for (const l of o.links.slice(0, 2000)){
+    if (!l || typeof l !== 'object') continue;
+    const a = String(l.a), b = String(l.b);
+    if (a !== b && M.nodes[a] && M.nodes[b] && !M.links.some(x => (x.a === a && x.b === b) || (x.a === b && x.b === a))) M.links.push({ id: 'l' + (M.links.length + 1).toString(36), a: a, b: b });
+  }
+  return M;
+}
+function colorOf(M, id){ let n = M.nodes[id], g = 0; while (n && g++ < 6000){ if (n.c != null) return n.c; n = n.p == null ? null : M.nodes[n.p]; } return 0; }
+function descendants(M, id){ const out = [], st = [id]; while (st.length){ const i = st.pop(); const n = M.nodes[i]; if (!n) continue; out.push(i); for (let j = n.k.length - 1; j >= 0; j--) st.push(n.k[j]); } return out; }
+
+function opAddChild(M, pid, text, at){
+  const p = M.nodes[pid]; if (!p) return null;
+  const id = nid(M); const n = { id: id, t: text || '', p: pid, k: [] };
+  if (p.p == null) n.c = 1 + (p.k.length % (COL.length - 1));
+  if (at == null || at < 0 || at > p.k.length) p.k.push(id); else p.k.splice(at, 0, id);
+  delete p.f; M.nodes[id] = n; return id;
+}
+function opAddRoot(M, x, y, text){ const id = nid(M); M.nodes[id] = { id: id, t: text || '', p: null, k: [], xy: [r1(x), r1(y)] }; M.roots.push(id); return id; }
+function opDelete(M, id){
+  const n = M.nodes[id]; if (!n) return false;
+  if (n.p == null && M.roots.length <= 1) return false;
+  const all = descendants(M, id); const gone = new Set(all);
+  if (n.p == null) M.roots = M.roots.filter(r => r !== id); else { const p = M.nodes[n.p]; p.k = p.k.filter(k => k !== id); }
+  for (const i of all) delete M.nodes[i];
+  M.links = M.links.filter(l => !gone.has(l.a) && !gone.has(l.b));
+  return true;
+}
+function opReparent(M, id, pid){
+  const n = M.nodes[id], t = M.nodes[pid]; if (!n || !t || id === pid) return false;
+  if (descendants(M, id).indexOf(pid) >= 0) return false;
+  if (n.p == null){ if (M.roots.length <= 1) return false; M.roots = M.roots.filter(r => r !== id); } else { const p = M.nodes[n.p]; p.k = p.k.filter(k => k !== id); }
+  n.p = pid; delete n.xy; delete n.m; t.k.push(id); delete t.f;
+  if (t.p == null && n.c == null) n.c = 1 + ((t.k.length - 1) % (COL.length - 1));
+  return true;
+}
+function opDetach(M, id, x, y){
+  const n = M.nodes[id]; if (!n || n.p == null) return false;
+  const c = colorOf(M, id); const p = M.nodes[n.p]; p.k = p.k.filter(k => k !== id);
+  n.p = null; delete n.m; n.xy = [r1(x), r1(y)]; if (n.c == null) n.c = c; M.roots.push(id); return true;
+}
+function opReorder(M, id, d){
+  const n = M.nodes[id]; if (!n || n.p == null) return false;
+  const k = M.nodes[n.p].k; const i = k.indexOf(id), j = i + d; if (i < 0 || j < 0 || j >= k.length) return false;
+  k.splice(i, 1); k.splice(j, 0, id); return true;
+}
+function opLink(M, a, b){
+  if (a === b || !M.nodes[a] || !M.nodes[b]) return null;
+  for (const l of M.links) if ((l.a === a && l.b === b) || (l.a === b && l.b === a)) return null;
+  let i = M.links.length + 1, id; do { id = 'l' + (i++).toString(36); } while (M.links.some(l => l.id === id));
+  M.links.push({ id: id, a: a, b: b }); return id;
+}
+function opUnlink(M, lid){ const n = M.links.length; M.links = M.links.filter(l => l.id !== lid); return M.links.length !== n; }
+function opAddTree(M, pid, tree){ const id = opAddChild(M, pid, tree.t); if (id) for (const k of tree.k) opAddTree(M, id, k); return id; }
+
+/* 字下げつきの箇条書きを木に直す（貼り付け用）。タブ1つ＝4、半角空白＝1、全角空白＝2 として深さを比べる。 */
+function parseOutline(text){
+  const rows = [];
+  for (const raw of String(text).split(NL)){
+    const line = raw.split(CR).join('');
+    if (!line.trim()) continue;
+    let i = 0, ind = 0;
+    while (i < line.length){ const ch = line[i]; if (ch === TAB) ind += 4; else if (ch === ' ') ind += 1; else if (ch === '　') ind += 2; else break; i++; }
+    let t = line.slice(i);
+    for (const b of ['- ', '* ', '+ ', '・', '• ']) if (t.indexOf(b) === 0){ t = t.slice(b.length); break; }
+    t = t.trim(); if (!t) continue;
+    rows.push({ ind: ind, t: t.slice(0, 2000) });
+  }
+  const top = [], stack = [];
+  for (const r of rows.slice(0, 1500)){
+    const node = { t: r.t, k: [] };
+    while (stack.length && stack[stack.length - 1].ind >= r.ind) stack.pop();
+    if (stack.length) stack[stack.length - 1].node.k.push(node); else top.push(node);
+    stack.push({ ind: r.ind, node: node });
+  }
+  return top;
+}
+function outlineOf(M, id){
+  const out = [], st = [[id, 0]];
+  while (st.length){ const cur = st.pop(); const n = M.nodes[cur[0]]; if (!n) continue; out.push(new Array(cur[1] + 1).join(TAB) + n.t.split(NL).join(' ')); for (let j = n.k.length - 1; j >= 0; j--) st.push([n.k[j], cur[1] + 1]); }
+  return out.join(NL);
+}
+
+/* 折り返し。ブラウザの単語分けが使えれば単語の途中では切らない（使えなければ、英数字のかたまり以外は1文字ずつ）。
+   行頭に来てはいけない記号は前の行に残し、行末に来てはいけない開き括弧は次の行へ送る。 */
+const SEG = (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') ? new Intl.Segmenter('ja', { granularity: 'word' }) : null;
+function tokens(s){
+  const out = [];
+  if (SEG){ for (const x of SEG.segment(s)) out.push(x.segment); return out; }
+  let cur = '';
+  for (const ch of s){
+    const c = ch.codePointAt(0);
+    const w = (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 39 || c === 45 || c === 95;
+    if (w) cur += ch; else { if (cur){ out.push(cur); cur = ''; } out.push(ch); }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+function wrapPara(para, lim, st, measure){
+  const out = []; let line = '';
+  for (const tk of tokens(para)){
+    if (measure(tk, st.font) > lim){
+      for (const ch of tk){ if (line !== '' && measure(line + ch, st.font) > lim){ out.push(line); line = ch; } else line += ch; }
+      continue;
+    }
+    if (line !== '' && measure(line + tk, st.font) > lim && NOSTART.indexOf(tk[0]) < 0){
+      let carry = '';
+      while (line.length > 1 && NOEND.indexOf(line[line.length - 1]) >= 0){ carry = line[line.length - 1] + carry; line = line.slice(0, -1); }
+      out.push(line.trimEnd()); line = carry + (tk === ' ' ? '' : tk);
+    }
+    else line += tk;
+  }
+  out.push(line);
+  return out;
+}
+function wrap(text, st, measure){
+  const out = [];
+  for (const para of String(text).split(NL)){
+    if (para === ''){ out.push(''); continue; }
+    let lines = wrapPara(para, st.maxw, st, measure);
+    if (lines.length > 1){
+      /* 行数はそのままで、行の長さがそろう幅を探す（最後の行に1〜2文字だけ残るのを避ける）。英単語は途中で切らない。 */
+      let wt = 0; for (const tk of tokens(para)) wt = Math.max(wt, measure(tk, st.font));
+      if (wt <= st.maxw){
+        let lo = Math.max(st.maxw / lines.length, wt), hi = st.maxw;
+        for (let i = 0; i < 7; i++){ const mid = (lo + hi) / 2; const tr = wrapPara(para, mid, st, measure); if (tr.length <= lines.length){ hi = mid; lines = tr; } else lo = mid; }
+      }
+    }
+    for (const l of lines) out.push(l);
+  }
+  return out;
+}
+
+/* 配置。親の位置＋（手で動かした分 m があればそれ、無ければ自動の並び）。根は xy をそのまま使う。 */
+function computeLayout(M, measure){
+  const geo = new Map(); const down = M.dir === 'down';
+  function size(id, depth){
+    const n = M.nodes[id]; const st = n.p == null ? ST_ROOT : ST;
+    const lines = wrap(n.t === '' ? ' ' : n.t, st, measure);
+    let tw = 0; for (const l of lines){ const v = measure(l, st.font); if (v > tw) tw = v; }
+    geo.set(id, { id: id, depth: depth, lines: lines, w: Math.max(st.minw, Math.ceil(tw) + st.px * 2), h: lines.length * st.lh + st.py * 2, x: 0, y: 0, ext: 0, kext: 0 });
+    if (!n.f) for (const k of n.k) size(k, depth + 1);
+  }
+  function ext(id){
+    const n = M.nodes[id], g = geo.get(id); let sum = 0, cnt = 0;
+    if (!n.f) for (const k of n.k){ const e = ext(k); if (!M.nodes[k].m){ sum += e; cnt++; } }
+    g.kext = cnt ? sum + (down ? GAPDV : GAPV) * (cnt - 1) : 0;
+    g.ext = Math.max(down ? g.w : g.h, g.kext);
+    return g.ext;
+  }
+  function place(id, x, y){
+    const n = M.nodes[id], g = geo.get(id); g.x = r1(x); g.y = r1(y);
+    if (n.f) return;
+    let cur = (down ? x : y) - g.kext / 2;
+    for (const k of n.k){
+      const kn = M.nodes[k], kg = geo.get(k);
+      if (kn.m){ place(k, x + kn.m[0], y + kn.m[1]); continue; }
+      const c = cur + kg.ext / 2;
+      if (down) place(k, c, y + g.h / 2 + GAPD + kg.h / 2); else place(k, x + g.w / 2 + GAPH + kg.w / 2, c);
+      cur += kg.ext + (down ? GAPDV : GAPV);
+    }
+  }
+  for (const r of M.roots){ size(r, 0); ext(r); const n = M.nodes[r]; place(r, n.xy[0], n.xy[1]); }
+  return geo;
+}
+/* 2つの箱を結ぶ曲線。mode が 'h' なら左右の辺、'v' なら上下の辺から出す。指定が無ければ、離れている向きで決める。 */
+function edgePath(a, b, mode){
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const gx = Math.abs(dx) - (a.w + b.w) / 2, gy = Math.abs(dy) - (a.h + b.h) / 2;
+  if (mode === 'h' || (mode !== 'v' && gx >= gy)){
+    const s = dx >= 0 ? 1 : -1; const x1 = a.x + s * a.w / 2, x2 = b.x - s * b.w / 2, mx = (x1 + x2) / 2;
+    return 'M' + r1(x1) + ' ' + r1(a.y) + 'C' + r1(mx) + ' ' + r1(a.y) + ' ' + r1(mx) + ' ' + r1(b.y) + ' ' + r1(x2) + ' ' + r1(b.y);
+  }
+  const s = dy >= 0 ? 1 : -1; const y1 = a.y + s * a.h / 2, y2 = b.y - s * b.h / 2, my = (y1 + y2) / 2;
+  return 'M' + r1(a.x) + ' ' + r1(y1) + 'C' + r1(a.x) + ' ' + r1(my) + ' ' + r1(b.x) + ' ' + r1(my) + ' ' + r1(b.x) + ' ' + r1(y2);
+}
+function boundsOf(geo){
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const g of geo.values()){ x0 = Math.min(x0, g.x - g.w / 2); y0 = Math.min(y0, g.y - g.h / 2); x1 = Math.max(x1, g.x + g.w / 2); y1 = Math.max(y1, g.y + g.h / 2); }
+  if (!isFinite(x0)) return { x: 0, y: 0, w: 1, h: 1 };
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+function b64u(bytes){
+  let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  let b = btoa(s).split('+').join('-').split('/').join('_'); while (b.endsWith('=')) b = b.slice(0, -1); return b;
+}
+function unb64u(str){
+  let b = String(str).split('-').join('+').split('_').join('/'); while (b.length % 4) b += '=';
+  const s = atob(b); const out = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i); return out;
+}
+/*CORE-END*/
+
+const KEY = 'mm_store_v1';
+const $ = id => document.getElementById(id);
+const stage = $('stage'), vp = $('vp'), ed = $('ed'), nameIn = $('mapName'), menu = $('menu'), modal = $('modal'), card = $('card'), hint = $('hint'), toastEl = $('toast'), printbox = $('printbox'), fileIn = $('fileIn');
+const DESKTOP = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+const darkMq = window.matchMedia('(prefers-color-scheme: dark)');
+const mctx = document.createElement('canvas').getContext('2d'); const mcache = new Map();
+function measure(s, font){
+  const k = font + '|' + s; let v = mcache.get(k);
+  if (v === undefined){ mctx.font = font; v = mctx.measureText(s).width; if (mcache.size > 20000) mcache.clear(); mcache.set(k, v); }
+  return v;
+}
+
+let store = null, M = null, geo = new Map();
+let S = 1, TX = 0, TY = 0;
+let sel = null, selLink = null, dropId = null, linkFrom = null;
+let editing = false, editNew = false;
+let hist = [], hi = -1, saveT = 0, toastT = 0;
+let menuAnchor = null;
+
+/* ---------- 保存（このブラウザの中だけ。外へは送らない） ---------- */
+function loadStore(){
+  try {
+    const o = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (o && o.maps && Array.isArray(o.order)){
+      const st = { cur: null, order: [], maps: {} };
+      for (const raw of o.order){ const id = String(raw); const e = o.maps[id]; const m = e && okId(id) ? sanitizeMap(e.data) : null; if (m && !st.maps[id]){ st.maps[id] = { id: id, ts: Number(e.ts) || 0, data: m }; st.order.push(id); } }
+      if (st.order.length){ st.cur = st.maps[o.cur] ? String(o.cur) : st.order[0]; return st; }
+    }
+  } catch (e){}
+  return null;
+}
+function saveNow(){
+  clearTimeout(saveT); saveT = 0;
+  try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e){ toast('保存できなかった。ブラウザの保存領域がいっぱいか、無効になっている'); }
+}
+function saveSoon(){ if (!saveT) saveT = setTimeout(saveNow, 250); }
+function mapId(){ let id; do { id = 'm' + Math.floor(Math.random() * 2176782336).toString(36); } while (store.maps[id]); return id; }
+function addMap(m){ const id = mapId(); store.maps[id] = { id: id, ts: Date.now(), data: m }; store.order.unshift(id); openMap(id); return id; }
+function openMap(id){
+  if (editing) commitEdit(false);
+  store.cur = id; M = store.maps[id].data; sel = null; selLink = null; linkFrom = null; dropId = null;
+  hist = []; hi = -1; snap(); nameIn.value = M.name; saveSoon(); render(); fit();
+}
+function sampleMap(){
+  const m = newMap('はじめてのマップ');
+  const a = opAddChild(m, 'n1', 'Tab で子を追加'); opAddChild(m, a, '文字を打つとそのまま書き換え');
+  opAddChild(m, 'n1', 'Enter で同じ階層に追加');
+  const c = opAddChild(m, 'n1', 'ドラッグで動かす'); opAddChild(m, c, '別の項目に重ねると付け替え');
+  opAddChild(m, 'n1', '何も無い所をダブルクリックで新しいかたまり');
+  return m;
+}
+
+/* ---------- 元に戻す ---------- */
+function snap(){ hist.length = hi + 1; hist.push(JSON.stringify(M)); if (hist.length > 200) hist.shift(); hi = hist.length - 1; }
+function restore(i){
+  if (i < 0 || i >= hist.length) return;
+  if (editing) cancelEdit();
+  hi = i; M = JSON.parse(hist[i]); store.maps[store.cur].data = M; nameIn.value = M.name;
+  if (sel && !M.nodes[sel]) sel = null; selLink = null; linkFrom = null; saveSoon(); render();
+}
+function commit(){ snap(); store.maps[store.cur].ts = Date.now(); saveSoon(); render(); }
+
+/* ---------- 描画 ---------- */
+function esc(s){ return String(s).split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;').split('"').join('&quot;'); }
+function mix(a, b, t){
+  const pa = [1, 3, 5].map(i => parseInt(a.slice(i, i + 2), 16)), pb = [1, 3, 5].map(i => parseInt(b.slice(i, i + 2), 16));
+  return '#' + pa.map((v, i) => Math.round(v + (pb[i] - v) * t).toString(16).padStart(2, '0')).join('');
+}
+function scene(o){
+  const dark = o.dark, base = dark ? '#14171c' : '#ffffff', ink = dark ? '#e8ebf0' : '#1c2330', acc = dark ? '#6ea1ff' : '#2f6fde', lk = dark ? '#9aa5b5' : '#5b6676';
+  const stroke = i => dark ? mix(COL[i], '#ffffff', 0.25) : COL[i];
+  const down = M.dir === 'down';
+  let E = '', L = '', N = '';
+  for (const g of geo.values()){
+    const n = M.nodes[g.id]; const ci = colorOf(M, g.id); const root = n.p == null; const st = root ? ST_ROOT : ST; const rx = root ? 18 : 11;
+    if (!root){ const pg = geo.get(n.p); if (pg) E += '<path d="' + edgePath(pg, g, n.m ? null : (down ? 'v' : 'h')) + '" fill="none" stroke="' + stroke(ci) + '" stroke-width="' + (g.depth === 1 ? 2.6 : 1.8) + '" stroke-linecap="round"/>'; }
+    const fill = root ? (dark ? mix(COL[ci], '#000000', 0.1) : COL[ci]) : mix(base, COL[ci], g.depth === 1 ? (dark ? 0.32 : 0.17) : (dark ? 0.17 : 0.07));
+    N += '<g class="nd" data-id="' + g.id + '" transform="translate(' + r1(g.x - g.w / 2) + ' ' + r1(g.y - g.h / 2) + ')">';
+    if (o.screen && (g.id === o.drop || g.id === o.sel || g.id === o.linkFrom)){
+      const dash = g.id === o.drop || (g.id === o.linkFrom && g.id !== o.sel) ? ' stroke-dasharray="6 4"' : '';
+      N += '<rect x="-4" y="-4" width="' + (g.w + 8) + '" height="' + (g.h + 8) + '" rx="' + (rx + 4) + '" fill="none" stroke="' + acc + '" stroke-width="2.5"' + dash + '/>';
+    }
+    N += '<rect width="' + g.w + '" height="' + g.h + '" rx="' + rx + '" fill="' + fill + '" stroke="' + stroke(ci) + '" stroke-width="' + (root ? 0 : 1.6) + '"/>';
+    if (g.id !== o.edit){
+      N += '<text xml:space="preserve" font-family="' + FF + '" font-size="' + st.fs + '" font-weight="' + st.fw + '" fill="' + (root ? '#ffffff' : ink) + '" text-anchor="middle">';
+      for (let i = 0; i < g.lines.length; i++) N += '<tspan x="' + r1(g.w / 2) + '" y="' + r1(st.py + st.lh * i + st.lh * 0.72) + '">' + esc(g.lines[i]) + '</tspan>';
+      N += '</text>';
+    }
+    if (n.k.length && (o.screen || n.f)){
+      const cx = down ? g.w / 2 : g.w + 11, cy = down ? g.h + 11 : g.h / 2;
+      const label = n.f ? String(descendants(M, g.id).length - 1) : '−';
+      N += '<g class="fd' + (n.f || g.id === o.sel ? ' on' : '') + '" data-fold="' + g.id + '"><circle cx="' + r1(cx) + '" cy="' + r1(cy) + '" r="9" fill="' + base + '" stroke="' + stroke(ci) + '" stroke-width="1.5"/><text x="' + r1(cx) + '" y="' + r1(cy + 3.6) + '" font-family="' + FF + '" font-size="10" font-weight="700" fill="' + ink + '" text-anchor="middle">' + label + '</text></g>';
+    }
+    N += '</g>';
+  }
+  for (const l of M.links){
+    const a = geo.get(l.a), b = geo.get(l.b); if (!a || !b) continue;
+    const d = edgePath(a, b); const on = o.screen && l.id === o.selLink;
+    L += '<path d="' + d + '" fill="none" stroke="' + (on ? acc : lk) + '" stroke-width="' + (on ? 2.8 : 1.7) + '" stroke-dasharray="6 5" stroke-linecap="round"/>';
+    if (o.screen) L += '<path data-link="' + l.id + '" d="' + d + '" fill="none" stroke="transparent" stroke-width="16" pointer-events="stroke" style="cursor:pointer"/>';
+  }
+  return E + L + N;
+}
+function render(){
+  geo = computeLayout(M, measure);
+  if (sel && !geo.has(sel)){ let n = M.nodes[sel]; while (n && !geo.has(n.id)) n = n.p == null ? null : M.nodes[n.p]; sel = n ? n.id : null; }
+  if (selLink && !M.links.some(l => l.id === selLink)) selLink = null;
+  if (linkFrom && !geo.has(linkFrom)) linkFrom = null;
+  vp.innerHTML = scene({ dark: darkMq.matches, screen: true, sel: sel, drop: dropId, edit: editing ? sel : null, selLink: selLink, linkFrom: linkFrom });
+  updateBar(); placeEditor();
+}
+function updateBar(){
+  const n = sel ? M.nodes[sel] : null;
+  $('bChild').disabled = !n; $('bSib').disabled = !n; $('bEdit').disabled = !n; $('bDel').disabled = !(n || selLink);
+  $('bColor').disabled = !n; $('bFold').disabled = !(n && n.k.length); $('bFold').textContent = n && n.f ? 'ひらく' : 'たたむ';
+  $('bLink').disabled = !n && !linkFrom; $('bLink').classList.toggle('on', !!linkFrom);
+  $('bUndo').disabled = hi <= 0; $('bRedo').disabled = hi >= hist.length - 1;
+  $('bDir').textContent = '向き: ' + (M.dir === 'down' ? '下' : '右');
+  hint.textContent = linkFrom ? 'つなぐ相手の項目を押す（やめる時は Esc か、何も無い所を押す）'
+    : DESKTOP ? 'Tab: 子を追加　Enter: 同じ階層に追加　文字を打つ: 書き換え　ドラッグ: 移動　Ctrl+ホイール: 拡大縮小'
+    : '項目を押して選び、上のボタンで足す。2回続けて押すと文字を直せる。2本指で拡大縮小';
+}
+function applyView(){
+  vp.setAttribute('transform', 'translate(' + r1(TX) + ' ' + r1(TY) + ') scale(' + S + ')');
+  stage.style.backgroundSize = r1(24 * S) + 'px ' + r1(24 * S) + 'px';
+  stage.style.backgroundPosition = r1(TX) + 'px ' + r1(TY) + 'px';
+  placeEditor();
+}
+function fit(){
+  const b = boundsOf(geo), r = stage.getBoundingClientRect(); const pad = 56;
+  const s = Math.max(0.2, Math.min(1.15, (r.width - pad * 2) / Math.max(1, b.w), (r.height - pad * 2) / Math.max(1, b.h)));
+  S = s; TX = r.width / 2 - (b.x + b.w / 2) * s; TY = r.height / 2 - (b.y + b.h / 2) * s; applyView();
+}
+function zoomAt(cx, cy, f){
+  const r = stage.getBoundingClientRect(); const ns = Math.max(0.15, Math.min(3, S * f));
+  const wx = (cx - r.left - TX) / S, wy = (cy - r.top - TY) / S;
+  S = ns; TX = cx - r.left - wx * ns; TY = cy - r.top - wy * ns; applyView();
+}
+function zoomBy(f){ const r = stage.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, f); }
+function toWorld(cx, cy){ const r = stage.getBoundingClientRect(); return { x: (cx - r.left - TX) / S, y: (cy - r.top - TY) / S }; }
+function ensureVisible(id){
+  const g = geo.get(id); if (!g) return;
+  const r = stage.getBoundingClientRect(); const m = 36;
+  const l = (g.x - g.w / 2) * S + TX, t = (g.y - g.h / 2) * S + TY, rr = (g.x + g.w / 2) * S + TX, b = (g.y + g.h / 2) * S + TY;
+  let dx = 0, dy = 0;
+  if (l < m) dx = m - l; else if (rr > r.width - m) dx = r.width - m - rr;
+  if (t < m) dy = m - t; else if (b > r.height - m - 30) dy = r.height - m - 30 - b;
+  if (dx || dy){ TX += dx; TY += dy; applyView(); }
+}
+function toast(msg){ toastEl.textContent = msg; toastEl.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 2600); }
+
+/* ---------- 選択と文字入力 ----------
+   パソコンでは、見えない入力欄にいつもフォーカスを置いておく。選んだ項目の上でそのまま打つと、
+   日本語入力でも1文字目から拾える。タッチ端末ではキーボードが出てしまうので、直す時だけフォーカスする。 */
+function focusGhost(){ if (DESKTOP && modal.hidden && document.activeElement !== ed) ed.focus({ preventScroll: true }); }
+function select(id, stay){
+  if (editing) commitEdit(false);
+  sel = id; selLink = null; ed.value = '';
+  render(); if (id && !stay) ensureVisible(id);
+}
+function placeEditor(){
+  const g = sel ? geo.get(sel) : null;
+  if (!editing || !g){
+    ed.classList.add('idle'); ed.style.cssText = '';
+    if (g){ ed.style.left = r1(g.x * S + TX) + 'px'; ed.style.top = r1(g.y * S + TY) + 'px'; }
+    return;
+  }
+  const root = M.nodes[sel].p == null, st = root ? ST_ROOT : ST;
+  const lines = wrap(ed.value === '' ? ' ' : ed.value, st, measure); let tw = 0; for (const l of lines) tw = Math.max(tw, measure(l, st.font));
+  const w = Math.max(st.minw + 50, Math.ceil(tw) + st.px * 2 + 8);
+  ed.classList.remove('idle');
+  ed.style.width = r1(w * S) + 'px'; ed.style.fontSize = r1(st.fs * S) + 'px'; ed.style.fontWeight = st.fw; ed.style.lineHeight = r1(st.lh * S) + 'px';
+  ed.style.padding = Math.max(0, r1(st.py * S - 2)) + 'px ' + Math.max(0, r1(st.px * S - 2)) + 'px'; ed.style.borderRadius = r1((root ? 18 : 11) * S) + 'px';
+  ed.style.height = '0px'; const h = Math.max(ed.scrollHeight + 4, (st.lh + st.py * 2) * S); ed.style.height = r1(h) + 'px';
+  ed.style.left = r1(g.x * S + TX - w * S / 2) + 'px'; ed.style.top = r1(g.y * S + TY - h / 2) + 'px';
+}
+function beginEdit(mode){
+  const n = sel ? M.nodes[sel] : null; if (!n) return;
+  if (mode === 'keep' || mode === 'all') ed.value = n.t; else if (mode === 'new') ed.value = '';
+  editing = true;
+  if (S < 0.6){ const g = geo.get(sel), r = stage.getBoundingClientRect(); S = 1; TX = r.width / 2 - g.x; TY = r.height / 2 - g.y; applyView(); }
+  render();
+  if (document.activeElement !== ed) ed.focus({ preventScroll: true });
+  try { if (mode === 'all') ed.select(); else if (mode === 'keep'){ const len = ed.value.length; ed.setSelectionRange(len, len); } } catch (e){}
+}
+function commitEdit(refocus){
+  if (!editing) return true;
+  const id = sel, n = id ? M.nodes[id] : null;
+  const v = ed.value.split(CR).join('').trim();
+  editing = false; ed.value = '';
+  const wasNew = editNew; editNew = false;
+  let ok = true;
+  if (!n){ render(); }
+  else if (v === ''){
+    if (wasNew){ const back = n.p != null ? n.p : (M.roots.find(r => r !== id) || null); if (opDelete(M, id)) sel = back; ok = false; }
+    render();
+  }
+  else if (v !== n.t || wasNew){ n.t = v; commit(); }
+  else render();
+  if (refocus !== false) focusGhost();
+  return ok;
+}
+function cancelEdit(){
+  if (!editing) return;
+  const id = sel, n = id ? M.nodes[id] : null;
+  editing = false; ed.value = '';
+  if (editNew && n){ const back = n.p != null ? n.p : (M.roots.find(r => r !== id) || null); if (opDelete(M, id)) sel = back; }
+  editNew = false; render(); focusGhost();
+}
+ed.addEventListener('compositionstart', () => { if (!editing && sel) beginEdit('typed'); });
+ed.addEventListener('input', () => {
+  if (editing){ placeEditor(); return; }
+  if (!sel){ ed.value = ''; return; }
+  if (ed.value.trim() === '') beginEdit('keep'); else beginEdit('typed');
+});
+ed.addEventListener('blur', () => { if (editing) commitEdit(false); });
+
+/* ---------- 操作 ---------- */
+function startNew(id){ sel = id; selLink = null; editNew = true; render(); ensureVisible(id); beginEdit('new'); }
+function actChild(){ if (editing && !commitEdit(false)) return; if (!sel) return; startNew(opAddChild(M, sel, '')); }
+function actSib(){
+  if (editing && !commitEdit(false)) return; if (!sel) return;
+  const n = M.nodes[sel]; if (n.p == null){ startNew(opAddChild(M, sel, '')); return; }
+  startNew(opAddChild(M, n.p, '', M.nodes[n.p].k.indexOf(sel) + 1));
+}
+function actDelete(){
+  if (selLink){ opUnlink(M, selLink); selLink = null; commit(); return; }
+  if (!sel) return;
+  const n = M.nodes[sel]; let next = null;
+  if (n.p != null){ const k = M.nodes[n.p].k, i = k.indexOf(sel); next = k[i + 1] || k[i - 1] || n.p; } else next = M.roots.find(r => r !== sel) || null;
+  if (!opDelete(M, sel)){ toast('最後の1つは消せない'); return; }
+  sel = next; commit();
+}
+function actFold(id){ const n = M.nodes[id || sel]; if (!n || !n.k.length) return; if (n.f) delete n.f; else n.f = true; commit(); }
+function actColor(i){ const n = sel ? M.nodes[sel] : null; if (!n) return; if (i == null) delete n.c; else n.c = i; commit(); }
+function actTidy(){
+  let c = 0; for (const id in M.nodes) if (M.nodes[id].m){ delete M.nodes[id].m; c++; }
+  if (c){ commit(); fit(); toast('自動の並びに戻した'); } else toast('もう自動の並びになっている');
+}
+function actDir(){ M.dir = M.dir === 'down' ? 'right' : 'down'; commit(); fit(); }
+function actLinkMode(){ if (linkFrom){ linkFrom = null; render(); return; } if (!sel) return; linkFrom = sel; render(); }
+/* 矢印キー。まず木のつながりで動く（親・子・となりの兄弟）。手で動かした項目や、つながりの先が無い時は、見た目で近いものへ動く。 */
+function navigate(key){
+  if (!sel){ select(M.roots[0]); return; }
+  const g = geo.get(sel), n = M.nodes[sel]; if (!g || !n) return;
+  const down = M.dir === 'down';
+  const kParent = down ? 'ArrowUp' : 'ArrowLeft', kChild = down ? 'ArrowDown' : 'ArrowRight', kPrev = down ? 'ArrowLeft' : 'ArrowUp', kNext = down ? 'ArrowRight' : 'ArrowDown';
+  let tgt = null;
+  if (key === kParent && n.p != null && !n.m) tgt = n.p;
+  else if (key === kChild && n.k.length && !n.f){
+    let bd = Infinity;
+    for (const k of n.k){ const kg = geo.get(k); if (!kg || M.nodes[k].m) continue; const d = Math.abs(down ? kg.x - g.x : kg.y - g.y); if (d < bd){ bd = d; tgt = k; } }
+  }
+  else if ((key === kPrev || key === kNext) && n.p != null && !n.m){
+    const ks = M.nodes[n.p].k.filter(k => !M.nodes[k].m); const i = ks.indexOf(sel) + (key === kPrev ? -1 : 1);
+    if (i >= 0 && i < ks.length) tgt = ks[i];
+  }
+  if (!tgt){
+    const d = key === 'ArrowLeft' ? [-1, 0] : key === 'ArrowRight' ? [1, 0] : key === 'ArrowUp' ? [0, -1] : [0, 1];
+    let bs = Infinity;
+    for (const o of geo.values()){
+      if (o.id === sel) continue;
+      const dx = o.x - g.x, dy = o.y - g.y; const along = dx * d[0] + dy * d[1]; if (along <= 1) continue;
+      const perp = Math.abs(dx * d[1]) + Math.abs(dy * d[0]); if (perp > along * 3) continue;
+      const sc = along + perp * 2.2; if (sc < bs){ bs = sc; tgt = o.id; }
+    }
+  }
+  if (tgt) select(tgt);
+}
+
+/* ---------- マウス・タッチ ---------- */
+const ptrs = new Map(); let drag = null; let lastTap = { t: 0, x: 0, y: 0, key: '' };
+function hitOf(t){
+  if (!t || !t.closest) return {};
+  const f = t.closest('[data-fold]'); if (f) return { fold: f.getAttribute('data-fold') };
+  const l = t.closest('[data-link]'); if (l) return { link: l.getAttribute('data-link') };
+  const n = t.closest('[data-id]'); if (n) return { node: n.getAttribute('data-id') };
+  return {};
+}
+function findDrop(id, wx, wy){
+  const ban = new Set(descendants(M, id)); let best = null;
+  for (const g of geo.values()){ if (ban.has(g.id)) continue; if (Math.abs(wx - g.x) <= g.w / 2 && Math.abs(wy - g.y) <= g.h / 2) best = g.id; }
+  return best;
+}
+function startPinch(){
+  const p = Array.from(ptrs.values());
+  drag = { type: 'pinch', d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1, s: S, mx: (p[0].x + p[1].x) / 2, my: (p[0].y + p[1].y) / 2, tx: TX, ty: TY };
+}
+function doPinch(){
+  const p = Array.from(ptrs.values()); if (p.length < 2) return;
+  const r = stage.getBoundingClientRect(); const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1;
+  const ns = Math.max(0.15, Math.min(3, drag.s * d / drag.d)); const mx = (p[0].x + p[1].x) / 2, my = (p[0].y + p[1].y) / 2;
+  const wx = (drag.mx - r.left - drag.tx) / drag.s, wy = (drag.my - r.top - drag.ty) / drag.s;
+  S = ns; TX = mx - r.left - wx * ns; TY = my - r.top - wy * ns; applyView();
+}
+stage.addEventListener('mousedown', e => { if (e.target !== ed) e.preventDefault(); });
+stage.addEventListener('pointerdown', e => {
+  if (e.target === ed) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  if (editing) commitEdit(false);
+  closeMenu();
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  try { stage.setPointerCapture(e.pointerId); } catch (err){}
+  if (ptrs.size === 2){ dropId = null; startPinch(); return; }
+  if (ptrs.size > 2) return;
+  const hit = hitOf(e.target), w = toWorld(e.clientX, e.clientY);
+  if (hit.fold){ drag = { type: 'none' }; sel = hit.fold; selLink = null; actFold(hit.fold); return; }
+  if (hit.link){ drag = { type: 'none' }; sel = null; selLink = hit.link; linkFrom = null; render(); return; }
+  if (hit.node){
+    if (linkFrom){
+      drag = { type: 'none' }; const from = linkFrom; linkFrom = null;
+      if (from !== hit.node && opLink(M, from, hit.node)){ sel = hit.node; selLink = null; commit(); } else render();
+      return;
+    }
+    sel = hit.node; selLink = null; ed.value = ''; render();
+    const g = geo.get(hit.node);
+    drag = { type: 'node', id: hit.node, ox: w.x - g.x, oy: w.y - g.y, sx: e.clientX, sy: e.clientY, moved: false };
+  } else {
+    if (linkFrom){ linkFrom = null; render(); }
+    drag = { type: 'pan', sx: e.clientX, sy: e.clientY, tx: TX, ty: TY, moved: false };
+  }
+});
+stage.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (!drag) return;
+  if (drag.type === 'pinch'){ doPinch(); return; }
+  if (drag.type === 'none') return;
+  const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+  if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+  drag.moved = true;
+  if (drag.type === 'pan'){ stage.classList.add('panning'); TX = drag.tx + dx; TY = drag.ty + dy; applyView(); return; }
+  const n = M.nodes[drag.id]; if (!n) return;
+  const w = toWorld(e.clientX, e.clientY), nx = w.x - drag.ox, ny = w.y - drag.oy;
+  if (n.p == null) n.xy = [r1(nx), r1(ny)]; else { const pg = geo.get(n.p); n.m = [r1(nx - pg.x), r1(ny - pg.y)]; }
+  dropId = e.shiftKey ? null : findDrop(drag.id, w.x, w.y);
+  render();
+});
+function tapped(e, key){
+  const now = performance.now();
+  const dbl = lastTap.key === key && now - lastTap.t < 400 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 24;
+  lastTap = dbl ? { t: 0, x: 0, y: 0, key: '' } : { t: now, x: e.clientX, y: e.clientY, key: key };
+  if (!dbl) return false;
+  if (key === 'bg'){ const w = toWorld(e.clientX, e.clientY); startNew(opAddRoot(M, w.x, w.y, '')); }
+  else if (sel) beginEdit('keep');
+  return true;
+}
+function pointerEnd(e){
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.delete(e.pointerId);
+  try { stage.releasePointerCapture(e.pointerId); } catch (err){}
+  stage.classList.remove('panning');
+  const d = drag;
+  if (d && d.type === 'pinch'){ if (ptrs.size < 2) drag = null; return; }
+  drag = null;
+  if (!d || d.type === 'none'){ focusGhost(); return; }
+  if (d.type === 'node'){
+    if (d.moved){
+      const tgt = dropId; dropId = null;
+      if (tgt){ if (!opReparent(M, d.id, tgt)) toast('そこへは付け替えられない'); }
+      else if (e.shiftKey && M.nodes[d.id] && M.nodes[d.id].p != null){ const g = geo.get(d.id); opDetach(M, d.id, g.x, g.y); }
+      commit();
+    } else if (e.type !== 'pointercancel' && tapped(e, 'n:' + d.id)) return;
+  } else if (d.type === 'pan' && !d.moved && e.type !== 'pointercancel'){
+    if (tapped(e, 'bg')) return;
+    if (sel || selLink){ sel = null; selLink = null; ed.value = ''; render(); }
+  }
+  focusGhost();
+}
+stage.addEventListener('pointerup', pointerEnd);
+stage.addEventListener('pointercancel', pointerEnd);
+stage.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey){ zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0022))); return; }
+  const k = e.deltaMode === 1 ? 30 : 1;
+  if (e.shiftKey && !e.deltaX) TX -= e.deltaY * k; else { TX -= e.deltaX * k; TY -= e.deltaY * k; }
+  applyView();
+}, { passive: false });
+
+/* ---------- キーボード ---------- */
+function isField(t){ return !!t && t !== ed && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable); }
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (!modal.hidden){ if (e.key === 'Escape'){ e.preventDefault(); closeModal(); } return; }
+  if (isField(t)){ if (t === nameIn && (e.key === 'Enter' || e.key === 'Escape') && !e.isComposing && e.keyCode !== 229){ e.preventDefault(); nameIn.blur(); focusGhost(); } return; }
+  if (e.isComposing || e.keyCode === 229) return;
+  if (t && t.tagName === 'BUTTON' && (e.key === 'Enter' || e.key === ' ')) return;
+  if (editing){
+    if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); commitEdit(); }
+    else if (e.key === 'Escape'){ e.preventDefault(); cancelEdit(); }
+    else if (e.key === 'Tab'){ e.preventDefault(); if (commitEdit()) actChild(); }
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && !e.altKey){
+    const k = e.key.toLowerCase();
+    if (k === 'z'){ e.preventDefault(); restore(e.shiftKey ? hi + 1 : hi - 1); }
+    else if (k === 'y'){ e.preventDefault(); restore(hi + 1); }
+    return;
+  }
+  switch (e.key){
+    case 'Tab': e.preventDefault(); if (!e.shiftKey) actChild(); break;
+    case 'Enter': e.preventDefault(); actSib(); break;
+    case 'Delete': case 'Backspace': e.preventDefault(); actDelete(); break;
+    case 'F2': e.preventDefault(); if (sel) beginEdit('keep'); break;
+    case 'Escape': if (!menu.hidden) closeMenu(); else if (linkFrom){ linkFrom = null; render(); } else if (sel || selLink){ sel = null; selLink = null; render(); } break;
+    case 'ArrowLeft': case 'ArrowRight': case 'ArrowUp': case 'ArrowDown':
+      e.preventDefault();
+      if (e.altKey){ if (sel && opReorder(M, sel, e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 1)) commit(); }
+      else navigate(e.key);
+      break;
+  }
+});
+document.addEventListener('copy', e => {
+  if (editing || !sel || isField(e.target) || !modal.hidden) return;
+  e.clipboardData.setData('text/plain', outlineOf(M, sel)); e.preventDefault(); toast('文字をコピーした');
+});
+document.addEventListener('cut', e => {
+  if (editing || !sel || isField(e.target) || !modal.hidden) return;
+  e.clipboardData.setData('text/plain', outlineOf(M, sel)); e.preventDefault(); actDelete();
+});
+document.addEventListener('paste', e => {
+  if (editing || isField(e.target) || !modal.hidden) return;
+  const txt = e.clipboardData ? e.clipboardData.getData('text') : '';
+  e.preventDefault();
+  if (!sel || !txt || !txt.trim()) return;
+  const trees = parseOutline(txt); if (!trees.length) return;
+  let last = null; for (const tr of trees) last = opAddTree(M, sel, tr);
+  ed.value = ''; commit(); if (last) ensureVisible(last);
+});
+
+/* ---------- メニューと小窓 ---------- */
+function closeMenu(){ menu.hidden = true; menuAnchor = null; }
+function openMenu(anchor, build){
+  if (!menu.hidden && menuAnchor === anchor){ closeMenu(); return; }
+  menu.textContent = ''; build(menu); menu.hidden = false; menuAnchor = anchor;
+  const r = anchor.getBoundingClientRect(); const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - mw - 8)) + 'px';
+  menu.style.top = Math.max(8, Math.min(r.bottom + 6, window.innerHeight - mh - 8)) + 'px';
+}
+function mi(parent, label, fn, cls){
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = label; if (cls) b.className = cls;
+  b.addEventListener('click', () => { closeMenu(); fn(); focusGhost(); });
+  parent.appendChild(b); return b;
+}
+function hr(parent){ parent.appendChild(document.createElement('hr')); }
+document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target) && !(menuAnchor && menuAnchor.contains(e.target))) closeMenu(); }, true);
+function el(tag, text, cls){ const x = document.createElement(tag); if (text != null) x.textContent = text; if (cls) x.className = cls; return x; }
+function showModal(build){ card.textContent = ''; build(card); modal.hidden = false; }
+function closeModal(){ modal.hidden = true; focusGhost(); }
+modal.addEventListener('pointerdown', e => { if (e.target === modal) closeModal(); });
+function askConfirm(title, body, okLabel, fn){
+  showModal(c => {
+    c.appendChild(el('h2', title)); c.appendChild(el('p', body));
+    const row = el('div', null, 'row'); const no = el('button', 'やめる'); const ok = el('button', okLabel, 'pri');
+    no.type = 'button'; ok.type = 'button'; no.addEventListener('click', closeModal); ok.addEventListener('click', () => { closeModal(); fn(); });
+    row.appendChild(no); row.appendChild(ok); c.appendChild(row);
+  });
+}
+function showText(title, body, text){
+  showModal(c => {
+    c.appendChild(el('h2', title)); c.appendChild(el('p', body));
+    const ta = document.createElement('textarea'); ta.readOnly = true; ta.value = text; c.appendChild(ta);
+    const row = el('div', null, 'row'); const ok = el('button', '閉じる', 'pri'); ok.type = 'button'; ok.addEventListener('click', closeModal); row.appendChild(ok); c.appendChild(row);
+    setTimeout(() => { ta.focus(); ta.select(); }, 30);
+  });
+}
+function showHelp(){
+  const rows = [
+    ['項目を足す', 'Tab で子、Enter で同じ階層。上の「＋ 子」「＋ 並び」でも同じ。'],
+    ['文字を直す', '選んでそのまま打つと書き換え。F2 かダブルクリックで続きから直す。Shift+Enter で改行。'],
+    ['動かす', '項目をドラッグ。下の枝も一緒に動く。「整列」で自動の並びに戻る。'],
+    ['付け替える', '動かして、別の項目に重ねて離す。'],
+    ['切り離す', 'Shift を押しながら動かして離すと、独立したかたまりになる。'],
+    ['新しいかたまり', '何も無い所をダブルクリック。'],
+    ['離れた2つをつなぐ', '項目を選んで「点線でつなぐ」を押し、相手を押す。点線を押して Delete で消える。'],
+    ['たたむ', '項目の端の丸を押す。たたむと、隠れている数が出る。'],
+    ['画面を動かす', '何も無い所をドラッグするか、ホイール。拡大縮小は Ctrl+ホイールか2本指。'],
+    ['選択を移す', '矢印キー。Alt+矢印で並び順を入れ替える。'],
+    ['まとめて足す', '字下げした箇条書きをコピーし、項目を選んで貼り付けると、枝ごと入る。'],
+    ['保存', '自動で、このブラウザの中に保存される。外には送られない。別の端末へ移す時は「書き出し」の共有リンクかファイルを使う。']
+  ];
+  showModal(c => {
+    c.appendChild(el('h2', '使い方'));
+    const tb = document.createElement('table');
+    for (const r of rows){ const tr = document.createElement('tr'); tr.appendChild(el('td', r[0])); tr.appendChild(el('td', r[1])); tb.appendChild(tr); }
+    c.appendChild(tb);
+    const row = el('div', null, 'row'); const ok = el('button', '閉じる', 'pri'); ok.type = 'button'; ok.addEventListener('click', closeModal); row.appendChild(ok); c.appendChild(row);
+  });
+}
+
+/* ---------- 書き出し・読み込み ---------- */
+function fileStem(){
+  const bad = String.fromCharCode(92) + '/:*?"<>|'; let s = '';
+  for (const ch of (M.name || 'マップ')) s += (bad.indexOf(ch) >= 0 || ch.codePointAt(0) < 32) ? '_' : ch;
+  return s.trim() || 'マップ';
+}
+function download(blob, name){
+  const a = document.createElement('a'); const url = URL.createObjectURL(blob);
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+function svgParts(){
+  geo = computeLayout(M, measure);
+  const b = boundsOf(geo), pad = 24; const w = Math.ceil(b.w + pad * 2), h = Math.ceil(b.h + pad * 2), x = r1(b.x - pad), y = r1(b.y - pad);
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="' + x + ' ' + y + ' ' + w + ' ' + h + '"><rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="#ffffff"/>' + scene({ dark: false, screen: false }) + '</svg>';
+  return { svg: svg, w: w, h: h };
+}
+function exportSVG(){ download(new Blob([svgParts().svg], { type: 'image/svg+xml;charset=utf-8' }), fileStem() + '.svg'); }
+function exportPNG(){
+  const p = svgParts(); const k = Math.max(p.w, p.h) * 2 <= 8000 ? 2 : 1;
+  const url = URL.createObjectURL(new Blob([p.svg], { type: 'image/svg+xml;charset=utf-8' })); const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas'); c.width = p.w * k; c.height = p.h * k; c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(url);
+    c.toBlob(bl => { if (bl) download(bl, fileStem() + '.png'); else toast('画像にできなかった'); }, 'image/png');
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); toast('画像にできなかった'); };
+  img.src = url;
+}
+function exportJSON(){ download(new Blob([JSON.stringify(M, null, 1)], { type: 'application/json' }), fileStem() + '.json'); }
+function printMap(){ printbox.innerHTML = svgParts().svg; window.print(); }
+window.addEventListener('afterprint', () => { printbox.textContent = ''; });
+fileIn.addEventListener('change', async () => {
+  const f = fileIn.files && fileIn.files[0]; fileIn.value = ''; if (!f) return;
+  try { const m = sanitizeMap(JSON.parse(await f.text())); if (!m) throw new Error('bad'); addMap(m); toast('ファイルのマップを読み込んだ'); }
+  catch (e){ toast('このファイルは読み込めなかった'); }
+});
+async function packLink(obj){
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  if (typeof CompressionStream === 'function'){
+    try { const buf = await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer(); return 'z' + b64u(new Uint8Array(buf)); } catch (e){}
+  }
+  return 'j' + b64u(bytes);
+}
+async function unpackLink(code){
+  const kind = code[0]; let bytes = unb64u(code.slice(1));
+  if (kind === 'z') bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+  else if (kind !== 'j') throw new Error('kind');
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+async function makeLink(){ return location.href.split('#')[0] + '#m=' + await packLink(M); }
+async function copyText(text, okMsg, title, body){
+  try { await navigator.clipboard.writeText(text); toast(okMsg); } catch (e){ showText(title, body, text); }
+}
+async function actShare(){ copyText(await makeLink(), 'リンクをコピーした。マップの中身はリンクそのものに入っている', '共有リンク', 'このリンクを開くと、同じマップが入った状態で始まる。中身はリンクそのものに入っていて、どこにも送られない。'); }
+function actCopyOutline(){ copyText(outlineOf(M, sel || M.roots[0]), '箇条書きでコピーした', '箇条書き', '選んだ項目から下を、字下げつきの文字にしたもの。'); }
+
+/* ---------- ボタン ---------- */
+function bind(id, fn){ $(id).addEventListener('click', () => { fn(); focusGhost(); }); }
+bind('bChild', actChild); bind('bSib', actSib); bind('bEdit', () => { if (sel) beginEdit('keep'); }); bind('bDel', actDelete);
+bind('bFold', () => actFold()); bind('bLink', actLinkMode);
+bind('bUndo', () => restore(hi - 1)); bind('bRedo', () => restore(hi + 1));
+bind('bTidy', actTidy); bind('bDir', actDir); bind('bFit', fit); bind('bZo', () => zoomBy(1 / 1.25)); bind('bZi', () => zoomBy(1.25));
+$('bHelp').addEventListener('click', showHelp);
+$('bColor').addEventListener('click', () => openMenu($('bColor'), m => {
+  const sw = el('div', null, 'sw');
+  COL.forEach((c, i) => { const b = mi(sw, '', () => actColor(i)); b.style.background = c; b.title = ['灰', '青', '緑', '橙', '赤', '紫', '青緑'][i]; });
+  m.appendChild(sw); hr(m); mi(m, '親と同じ色に戻す', () => actColor(null));
+}));
+$('bMaps').addEventListener('click', () => openMenu($('bMaps'), m => {
+  for (const id of store.order){ const d = store.maps[id].data; mi(m, d.name + '（' + Object.keys(d.nodes).length + '）', () => { if (id !== store.cur) openMap(id); }, id === store.cur ? 'cur' : ''); }
+  hr(m);
+  mi(m, '＋ 新しいマップ', () => { addMap(newMap()); sel = M.roots[0]; render(); beginEdit('all'); });
+  mi(m, 'このマップを複製', () => { const c = sanitizeMap(JSON.parse(JSON.stringify(M))); c.name = (M.name + ' のコピー').slice(0, 60); addMap(c); });
+  mi(m, 'このマップを消す', () => askConfirm('このマップを消す', '「' + M.name + '」を消す。元には戻せない。', '消す', () => {
+    const id = store.cur; delete store.maps[id]; store.order = store.order.filter(x => x !== id);
+    if (!store.order.length) addMap(newMap()); else openMap(store.order[0]);
+    saveNow();
+  }));
+}));
+$('bOut').addEventListener('click', () => openMenu($('bOut'), m => {
+  mi(m, '画像で保存（PNG）', exportPNG); mi(m, '画像で保存（SVG）', exportSVG); mi(m, '印刷する', printMap); hr(m);
+  mi(m, '共有リンクをコピー', actShare); mi(m, '箇条書きでコピー', actCopyOutline); hr(m);
+  mi(m, 'ファイルに保存（JSON）', exportJSON); mi(m, 'ファイルから読み込む', () => fileIn.click());
+}));
+nameIn.addEventListener('change', () => { const v = nameIn.value.trim().slice(0, 60) || 'マップ'; nameIn.value = v; if (v !== M.name){ M.name = v; commit(); } });
+window.addEventListener('resize', placeEditor);
+if (darkMq.addEventListener) darkMq.addEventListener('change', render);
+window.addEventListener('pagehide', () => { if (editing) commitEdit(false); if (saveT) saveNow(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && saveT) saveNow(); });
+
+/* ---------- 起動 ---------- */
+async function start(){
+  store = loadStore();
+  let linked = null;
+  if (location.hash.indexOf('#m=') === 0){
+    try { linked = sanitizeMap(await unpackLink(location.hash.slice(3))); } catch (e){ linked = null; }
+    try { history.replaceState(null, '', location.href.split('#')[0]); } catch (e){}
+  }
+  const bad = location.hash.indexOf('#m=') === 0 && !linked;
+  if (!store){ store = { cur: null, order: [], maps: {} }; if (!linked) addMap(sampleMap()); }
+  if (linked){
+    const js = JSON.stringify(linked); const same = store.order.find(id => JSON.stringify(sanitizeMap(store.maps[id].data)) === js);
+    if (same){ openMap(same); toast('同じマップが保存されていたので、それを開いた'); } else { addMap(linked); toast('リンクのマップを読み込んだ'); }
+  } else openMap(store.cur);
+  if (bad) toast('リンクを読み取れなかった');
+  focusGhost();
+  window.__mm = {
+    core: { newMap, sanitizeMap, opAddChild, opAddRoot, opDelete, opReparent, opDetach, opReorder, opLink, opUnlink, parseOutline, outlineOf, computeLayout, wrap, edgePath, boundsOf, b64u, unb64u },
+    get M(){ return M; }, get geo(){ return geo; }, get sel(){ return sel; }, get selLink(){ return selLink; }, get editing(){ return editing; }, get view(){ return { S: S, TX: TX, TY: TY }; }, get store(){ return store; },
+    get hist(){ return { n: hist.length, i: hi }; }, makeLink: makeLink, svg: () => svgParts(), ready: true
+  };
+}
+start();
+})();
+</script>
+</body>
+</html>
