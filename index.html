@@ -58,7 +58,7 @@ button.on{background:var(--accent);color:#fff}
 <header>
   <div class="grp"><input id="mapName" maxlength="60" aria-label="マップの名前" spellcheck="false"><button id="bMaps" type="button" title="マップの一覧">一覧 ▾</button></div>
   <div class="grp"><button id="bChild" type="button" title="子を追加（Tab）">＋ 子</button><button id="bSib" type="button" title="同じ階層に追加（Enter）">＋ 並び</button><button id="bEdit" type="button" title="文字を直す（F2 かダブルクリック）">編集</button><button id="bDel" type="button" title="消す（Delete）">削除</button></div>
-  <div class="grp"><button id="bColor" type="button" title="色を変える">色</button><button id="bFold" type="button" title="下の枝をたたむ／ひらく">たたむ</button><button id="bLink" type="button" title="離れた2つを点線でつなぐ">点線でつなぐ</button></div>
+  <div class="grp"><button id="bColor" type="button" title="色を変える">色</button><button id="bFold" type="button" title="下の枝をたたむ／ひらく">たたむ</button><button id="bLink" type="button" title="離れた2つを線でつなぐ（線を押して選ぶと、実線と点線を切り替えられる）">点線でつなぐ</button></div>
   <div class="grp"><button id="bUndo" type="button" title="元に戻す（Ctrl+Z）">↶ 戻す</button><button id="bRedo" type="button" title="やり直す（Ctrl+Y）">↷</button></div>
   <div class="grp"><button id="bMove" type="button" title="箱をつかんだ時に、その箱だけ動かすか、下の枝ごと動かすか">動かし方: 1つ</button><button id="bTidy" type="button" title="動かした位置をやめて、自動の並びに戻す">整列</button><button id="bDir" type="button" title="枝を伸ばす向き">向き: 右</button><button id="bFit" type="button" title="全体が見えるように合わせる">全体</button><button id="bZo" type="button" title="縮小">−</button><button id="bZi" type="button" title="拡大">＋</button></div>
   <div class="sp"></div>
@@ -122,7 +122,7 @@ function sanitizeMap(o){
   if (Array.isArray(o.links)) for (const l of o.links.slice(0, 2000)){
     if (!l || typeof l !== 'object') continue;
     const a = String(l.a), b = String(l.b);
-    if (a !== b && M.nodes[a] && M.nodes[b] && !M.links.some(x => (x.a === a && x.b === b) || (x.a === b && x.b === a))) M.links.push({ id: 'l' + (M.links.length + 1).toString(36), a: a, b: b });
+    if (a !== b && M.nodes[a] && M.nodes[b] && !M.links.some(x => (x.a === a && x.b === b) || (x.a === b && x.b === a))) { const nl = { id: 'l' + (M.links.length + 1).toString(36), a: a, b: b }; if (l.s === 1 || l.s === true) nl.s = 1; M.links.push(nl); }
   }
   return M;
 }
@@ -164,13 +164,20 @@ function opReorder(M, id, d){
   const k = M.nodes[n.p].k; const i = k.indexOf(id), j = i + d; if (i < 0 || j < 0 || j >= k.length) return false;
   k.splice(i, 1); k.splice(j, 0, id); return true;
 }
-function opLink(M, a, b){
+function opLink(M, a, b, solid){
   if (a === b || !M.nodes[a] || !M.nodes[b]) return null;
   for (const l of M.links) if ((l.a === a && l.b === b) || (l.a === b && l.b === a)) return null;
   let i = M.links.length + 1, id; do { id = 'l' + (i++).toString(36); } while (M.links.some(l => l.id === id));
-  M.links.push({ id: id, a: a, b: b }); return id;
+  const nl = { id: id, a: a, b: b }; if (solid) nl.s = 1; M.links.push(nl); return id;
 }
 function opUnlink(M, lid){ const n = M.links.length; M.links = M.links.filter(l => l.id !== lid); return M.links.length !== n; }
+/* つないだ線の種類を変える。solid が真なら実線、偽なら点線。点線は印を持たない（前からあるデータと同じ形のまま）。 */
+function opLinkStyle(M, lid, solid){
+  const l = M.links.find(x => x.id === lid); if (!l) return false;
+  if (!!l.s === !!solid) return false;
+  if (solid) l.s = 1; else delete l.s;
+  return true;
+}
 function opAddTree(M, pid, tree){ const id = opAddChild(M, pid, tree.t); if (id) for (const k of tree.k) opAddTree(M, id, k); return id; }
 
 /* 字下げつきの箇条書きを木に直す（貼り付け用）。タブ1つ＝4、半角空白＝1、全角空白＝2 として深さを比べる。 */
@@ -298,7 +305,7 @@ function edgePath(a, b, mode){
   const c = edgeCurve(a, b, mode);
   return 'M' + r1(c[0]) + ' ' + r1(c[1]) + 'C' + r1(c[2]) + ' ' + r1(c[3]) + ' ' + r1(c[4]) + ' ' + r1(c[5]) + ' ' + r1(c[6]) + ' ' + r1(c[7]);
 }
-/* 点 (px,py) から曲線までの、おおよその距離（曲線を細かく区切って測る）。点線を押したかどうかの判定に使う。 */
+/* 点 (px,py) から曲線までの、おおよその距離（曲線を細かく区切って測る）。つないだ線を押したかどうかの判定に使う。 */
 function curveDist(c, px, py){
   let best = Infinity, lx = c[0], ly = c[1];
   for (let i = 1; i <= 32; i++){
@@ -347,8 +354,8 @@ let editing = false, editNew = false;
 let hist = [], hi = -1, saveT = 0, toastT = 0;
 let menuAnchor = null;
 const PKEY = 'mm_prefs_v1';
-let prefs = { branch: false };
-try { const pp = JSON.parse(localStorage.getItem(PKEY) || 'null'); if (pp && typeof pp === 'object') prefs.branch = !!pp.branch; } catch (e){}
+let prefs = { branch: false, solid: false };
+try { const pp = JSON.parse(localStorage.getItem(PKEY) || 'null'); if (pp && typeof pp === 'object'){ prefs.branch = !!pp.branch; prefs.solid = !!pp.solid; } } catch (e){}
 function savePrefs(){ try { localStorage.setItem(PKEY, JSON.stringify(prefs)); } catch (e){} }
 
 /* ---------- 保存（このブラウザの中だけ。外へは送らない） ---------- */
@@ -430,7 +437,7 @@ function scene(o){
   for (const l of M.links){
     const a = geo.get(l.a), b = geo.get(l.b); if (!a || !b) continue;
     const d = edgePath(a, b); const on = o.screen && l.id === o.selLink;
-    L += '<path d="' + d + '" fill="none" stroke="' + (on ? acc : lk) + '" stroke-width="' + (on ? 2.8 : 1.7) + '" stroke-dasharray="6 5" stroke-linecap="round"/>';
+    L += '<path d="' + d + '" fill="none" stroke="' + (on ? acc : lk) + '" stroke-width="' + (on ? 2.8 : (l.s ? 2 : 1.7)) + '"' + (l.s ? '' : ' stroke-dasharray="6 5"') + ' stroke-linecap="round"/>';
   }
   return E + L + N;
 }
@@ -446,11 +453,15 @@ function updateBar(){
   const n = sel ? M.nodes[sel] : null;
   $('bChild').disabled = !n; $('bSib').disabled = !n; $('bEdit').disabled = !n; $('bDel').disabled = !(n || selLink);
   $('bColor').disabled = !n; $('bFold').disabled = !(n && n.k.length); $('bFold').textContent = n && n.f ? 'ひらく' : 'たたむ';
-  $('bLink').disabled = !n && !linkFrom; $('bLink').classList.toggle('on', !!linkFrom);
+  const lkSel = selLink ? M.links.find(l => l.id === selLink) : null;
+  $('bLink').disabled = !n && !linkFrom && !lkSel; $('bLink').classList.toggle('on', !!linkFrom);
+  $('bLink').textContent = lkSel ? (lkSel.s ? '点線にする' : '実線にする') : (prefs.solid ? '実線でつなぐ' : '点線でつなぐ');
+  $('bLink').title = lkSel ? '選んだ線を、実線と点線で切り替える' : '離れた2つを線でつなぐ（線を押して選ぶと、実線と点線を切り替えられる）';
   $('bUndo').disabled = hi <= 0; $('bRedo').disabled = hi >= hist.length - 1;
   $('bDir').textContent = '向き: ' + (M.dir === 'down' ? '下' : '右');
   $('bMove').textContent = '動かし方: ' + (prefs.branch ? '枝ごと' : '1つ');
   hint.textContent = linkFrom ? 'つなぐ相手の項目を押す（やめる時は Esc か、何も無い所を押す）'
+    : lkSel ? (DESKTOP ? '線を選んでいる。上のボタンで実線と点線を切り替え　Delete: 線を消す' : '線を選んでいる。上のボタンで実線と点線を切り替え。「削除」で線を消す')
     : DESKTOP ? 'Tab: 子を追加　Enter: 同じ階層に追加　文字を打つ: 書き換え　ドラッグ: 箱を動かす　Ctrl+ホイール: 拡大縮小'
     : '項目を押して選び、上のボタンで足す。2回続けて押すと文字を直せる。2本指で拡大縮小';
 }
@@ -572,7 +583,17 @@ function actTidy(){
   if (c){ commit(); fit(); toast('自動の並びに戻した'); } else toast('もう自動の並びになっている');
 }
 function actDir(){ M.dir = M.dir === 'down' ? 'right' : 'down'; commit(); fit(); }
-function actLinkMode(){ if (linkFrom){ linkFrom = null; render(); return; } if (!sel) return; linkFrom = sel; render(); }
+function actLinkMode(){
+  if (linkFrom){ linkFrom = null; render(); return; }
+  if (selLink){
+    /* 線を選んでいる時は、その線の実線と点線を切り替える。次に引く線も、最後に選んだ種類にする。 */
+    const l = M.links.find(x => x.id === selLink); if (!l) return;
+    const solid = !l.s;
+    if (opLinkStyle(M, selLink, solid)){ prefs.solid = solid; savePrefs(); commit(); }
+    return;
+  }
+  if (!sel) return; linkFrom = sel; render();
+}
 /* 矢印キー。まず木のつながりで動く（親・子・となりの兄弟）。手で動かした項目や、つながりの先が無い時は、見た目で近いものへ動く。 */
 function navigate(key){
   if (!sel){ select(M.roots[0]); return; }
@@ -653,7 +674,7 @@ stage.addEventListener('pointerdown', e => {
   if (hit.node){
     if (linkFrom){
       drag = { type: 'none' }; const from = linkFrom; linkFrom = null;
-      if (from !== hit.node && opLink(M, from, hit.node)){ sel = hit.node; selLink = null; commit(); } else render();
+      if (from !== hit.node && opLink(M, from, hit.node, prefs.solid)){ sel = hit.node; selLink = null; commit(); } else render();
       return;
     }
     sel = hit.node; selLink = null; ed.value = ''; render();
@@ -836,7 +857,7 @@ function showHelp(){
     ['付け替える', '動かして、別の箱の上で少し止めると枠が出る。そこで離す。通り過ぎるだけなら付け替わらない。'],
     ['切り離す', 'Shift を押しながら動かして離すと、独立したかたまりになる。'],
     ['新しいかたまり', '何も無い所をダブルクリック。'],
-    ['離れた2つをつなぐ', '項目を選んで「点線でつなぐ」を押し、相手を押す。点線を押して Delete で消える。'],
+    ['離れた2つをつなぐ', '項目を選んで「点線でつなぐ」を押し、相手を押す。線を押して選ぶと、同じボタンで実線と点線を切り替えられる（次に引く線も、最後に選んだ種類になる）。線を選んで Delete で消える。'],
     ['たたむ', '箱を選ぶと端に丸が出るので、それを押す。たたむと、隠れている数が出る。'],
     ['画面を動かす', '何も無い所をドラッグするか、ホイール。拡大縮小は Ctrl+ホイールか2本指。'],
     ['選択を移す', '矢印キー。Alt+矢印で並び順を入れ替える。'],
@@ -961,7 +982,7 @@ async function start(){
   if (bad) toast('リンクを読み取れなかった');
   focusGhost();
   window.__mm = {
-    core: { newMap, sanitizeMap, opAddChild, opAddRoot, opDelete, opReparent, opDetach, opReorder, opLink, opUnlink, parseOutline, outlineOf, computeLayout, wrap, edgePath, edgeCurve, curveDist, boundsOf, b64u, unb64u },
+    core: { newMap, sanitizeMap, opAddChild, opAddRoot, opDelete, opReparent, opDetach, opReorder, opLink, opUnlink, opLinkStyle, parseOutline, outlineOf, computeLayout, wrap, edgePath, edgeCurve, curveDist, boundsOf, b64u, unb64u },
     get M(){ return M; }, get geo(){ return geo; }, get sel(){ return sel; }, get selLink(){ return selLink; }, get editing(){ return editing; }, get view(){ return { S: S, TX: TX, TY: TY }; }, get store(){ return store; },
     get hist(){ return { n: hist.length, i: hi }; }, get prefs(){ return prefs; }, hitAt: hitAt, makeLink: makeLink, svg: () => svgParts(), ready: true
   };
