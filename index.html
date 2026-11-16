@@ -50,21 +50,25 @@ button.on{background:var(--accent);color:#fff}
 .card .row button{border-color:var(--line)}
 .card .row .pri{background:var(--accent);color:#fff;border-color:var(--accent)}
 .card textarea{width:100%;height:110px;font:12px/1.4 ui-monospace,Consolas,monospace;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}
+.menu .note{padding:6px 10px;color:var(--sub);font-size:12px}
+#bBack{position:fixed;left:12px;bottom:42px;z-index:15;padding:7px 13px;border-radius:999px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);font-size:13px;max-width:min(380px,84vw);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#bBack[hidden]{display:none}
 #printbox{display:none}
-@media print{header,#stage,.menu,.modal{display:none !important}body{display:block;background:#fff;overflow:visible}#printbox{display:block}#printbox svg{display:block;width:100%;height:auto;max-height:186mm}@page{size:A4 landscape;margin:10mm}}
+@media print{header,#stage,.menu,.modal,#bBack{display:none !important}body{display:block;background:#fff;overflow:visible}#printbox{display:block}#printbox svg{display:block;width:100%;height:auto;max-height:186mm}@page{size:A4 landscape;margin:10mm}}
 </style>
 </head>
 <body>
 <header>
   <div class="grp"><input id="mapName" maxlength="60" aria-label="マップの名前" spellcheck="false"><button id="bMaps" type="button" title="マップの一覧">一覧 ▾</button></div>
   <div class="grp"><button id="bChild" type="button" title="子を追加（Tab）">＋ 子</button><button id="bSib" type="button" title="同じ階層に追加（Enter）">＋ 並び</button><button id="bEdit" type="button" title="文字を直す（F2 かダブルクリック）">編集</button><button id="bDel" type="button" title="消す（Delete）">削除</button></div>
-  <div class="grp"><button id="bColor" type="button" title="色を変える">色</button><button id="bFold" type="button" title="下の枝をたたむ／ひらく">たたむ</button><button id="bLink" type="button" title="離れた2つを線でつなぐ（線を押して選ぶと、実線と点線を切り替えられる）">点線でつなぐ</button></div>
+  <div class="grp"><button id="bColor" type="button" title="色を変える">色</button><button id="bFold" type="button" title="下の枝をたたむ／ひらく">たたむ</button><button id="bLink" type="button" title="離れた2つを線でつなぐ（線を押して選ぶと、実線と点線を切り替えられる）">点線でつなぐ</button><button id="bJump" type="button" title="この箱から、別のマップへ飛べるようにする">飛ぶ先</button></div>
   <div class="grp"><button id="bUndo" type="button" title="元に戻す（Ctrl+Z）">↶ 戻す</button><button id="bRedo" type="button" title="やり直す（Ctrl+Y）">↷</button></div>
   <div class="grp"><button id="bMove" type="button" title="箱をつかんだ時に、その箱だけ動かすか、下の枝ごと動かすか">動かし方: 1つ</button><button id="bTidy" type="button" title="動かした位置をやめて、自動の並びに戻す">整列</button><button id="bDir" type="button" title="枝を伸ばす向き">向き: 右</button><button id="bFit" type="button" title="全体が見えるように合わせる">全体</button><button id="bZo" type="button" title="縮小">−</button><button id="bZi" type="button" title="拡大">＋</button></div>
   <div class="sp"></div>
   <div class="grp"><button id="bOut" type="button" title="画像・印刷・保存・共有">書き出し ▾</button><button id="bHelp" type="button" title="使い方">？</button></div>
 </header>
 <main id="stage"><svg id="cv" xmlns="http://www.w3.org/2000/svg"><g id="vp"></g></svg><textarea id="ed" class="idle" rows="1" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="項目の文字"></textarea><div id="hint"></div><div id="toast" role="status"></div></main>
+<button id="bBack" type="button" hidden></button>
 <div id="menu" class="menu" hidden></div>
 <div id="modal" class="modal" hidden><div class="card" id="card"></div></div>
 <div id="printbox"></div>
@@ -109,6 +113,7 @@ function sanitizeMap(o){
     const n = { id: id, t: String(s.t == null ? '' : s.t).slice(0, 2000), p: p, k: [] };
     if (Number.isInteger(s.c) && s.c >= 0 && s.c < COL.length) n.c = s.c;
     if (s.f) n.f = true;
+    if (typeof s.to === 'string' && okId(s.to)) n.to = s.to;
     if (p == null){ n.xy = num2(s.xy) || [0, 0]; } else { const m = num2(s.m); if (m) n.m = m; }
     M.nodes[id] = n;
     if (Array.isArray(s.k)) for (const k of s.k){ const ks = String(k); if (take(ks, id, depth + 1)) n.k.push(ks); }
@@ -177,6 +182,13 @@ function opLinkStyle(M, lid, solid){
   if (!!l.s === !!solid) return false;
   if (solid) l.s = 1; else delete l.s;
   return true;
+}
+/* 箱に「別のマップへ飛ぶ先」を付ける・外す。to は飛ぶ先のマップの id。null か空なら外す。印を持たない箱は、前からあるデータと同じ形のまま。 */
+function opSetJump(M, id, to){
+  const n = M.nodes[id]; if (!n) return false;
+  if (to == null || to === ''){ if (n.to === undefined) return false; delete n.to; return true; }
+  if (!okId(to) || n.to === to) return false;
+  n.to = to; return true;
 }
 function opAddTree(M, pid, tree){ const id = opAddChild(M, pid, tree.t); if (id) for (const k of tree.k) opAddTree(M, id, k); return id; }
 
@@ -353,6 +365,7 @@ let sel = null, selLink = null, dropId = null, linkFrom = null;
 let editing = false, editNew = false;
 let hist = [], hi = -1, saveT = 0, toastT = 0;
 let menuAnchor = null;
+let backStack = [];
 const PKEY = 'mm_prefs_v1';
 let prefs = { branch: false, solid: false };
 try { const pp = JSON.parse(localStorage.getItem(PKEY) || 'null'); if (pp && typeof pp === 'object'){ prefs.branch = !!pp.branch; prefs.solid = !!pp.solid; } } catch (e){}
@@ -380,7 +393,7 @@ function addMap(m){ const id = mapId(); store.maps[id] = { id: id, ts: Date.now(
 function openMap(id){
   if (editing) commitEdit(false);
   store.cur = id; M = store.maps[id].data; sel = null; selLink = null; linkFrom = null; dropId = null;
-  hist = []; hi = -1; snap(); nameIn.value = M.name; saveSoon(); render(); fit();
+  hist = []; hi = -1; snap(); nameIn.value = M.name; saveSoon(); render(); fit(); updateBack();
 }
 function sampleMap(){
   const m = newMap('はじめてのマップ');
@@ -432,6 +445,11 @@ function scene(o){
       const label = n.f ? String(descendants(M, g.id).length - 1) : '−';
       N += '<g data-fold="' + g.id + '"><circle cx="' + r1(cx) + '" cy="' + r1(cy) + '" r="9" fill="' + base + '" stroke="' + stroke(ci) + '" stroke-width="1.5"/><text x="' + r1(cx) + '" y="' + r1(cy + 3.6) + '" font-family="' + FF + '" font-size="10" font-weight="700" fill="' + ink + '" text-anchor="middle">' + label + '</text></g>';
     }
+    if (o.screen && n.to){
+      /* 別のマップへ飛ぶ箱には、右上の角に矢印の丸を出す（画面だけ。書き出しには出さない）。 */
+      const jx = g.w + 3, jy = -3;
+      N += '<g data-jump="' + g.id + '"><circle cx="' + r1(jx) + '" cy="' + r1(jy) + '" r="8.5" fill="' + base + '" stroke="' + stroke(ci) + '" stroke-width="1.5"/><path d="M' + r1(jx - 2.8) + ' ' + r1(jy + 2.8) + 'L' + r1(jx + 2.8) + ' ' + r1(jy - 2.8) + 'M' + r1(jx - 0.9) + ' ' + r1(jy - 2.8) + 'H' + r1(jx + 2.8) + 'V' + r1(jy + 0.9) + '" fill="none" stroke="' + ink + '" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></g>';
+    }
     N += '</g>';
   }
   for (const l of M.links){
@@ -467,6 +485,7 @@ function updateBar(){
   $('bColor').disabled = !n; $('bFold').disabled = !(n && n.k.length); $('bFold').textContent = n && n.f ? 'ひらく' : 'たたむ';
   const lkSel = selLink ? M.links.find(l => l.id === selLink) : null;
   $('bLink').disabled = !n && !linkFrom && !lkSel; $('bLink').classList.toggle('on', !!linkFrom);
+  $('bJump').disabled = !n; $('bJump').classList.toggle('on', !!(n && n.to));
   $('bLink').textContent = lkSel ? (lkSel.s ? '点線にする' : '実線にする') : (prefs.solid ? '実線でつなぐ' : '点線でつなぐ');
   $('bLink').title = lkSel ? '選んだ線を、実線と点線で切り替える' : '離れた2つを線でつなぐ（線を押して選ぶと、実線と点線を切り替えられる）';
   $('bUndo').disabled = hi <= 0; $('bRedo').disabled = hi >= hist.length - 1;
@@ -595,6 +614,27 @@ function actTidy(){
   if (c){ commit(); fit(); toast('自動の並びに戻した'); } else toast('もう自動の並びになっている');
 }
 function actDir(){ M.dir = M.dir === 'down' ? 'right' : 'down'; commit(); fit(); }
+/* ---------- 別のマップへ飛ぶ ----------
+   飛んだ時は、元のマップと箱を控えておき、左下の「← 戻る」で帰れるようにする。控えはこの画面を開いている間だけ（保存はしない）。 */
+function updateBack(){
+  while (backStack.length && (!store.maps[backStack[backStack.length - 1].map] || backStack[backStack.length - 1].map === store.cur)) backStack.pop();
+  const b = $('bBack'), top = backStack[backStack.length - 1];
+  if (!top){ b.hidden = true; b.textContent = ''; return; }
+  b.hidden = false; b.textContent = '← 「' + store.maps[top.map].data.name + '」へ戻る';
+}
+function actJump(id){
+  const n = M.nodes[id]; if (!n || !n.to) return false;
+  if (!store.maps[n.to]){ toast('飛ぶ先のマップが見つからない（消したか、別の場所で作ったマップ）'); return false; }
+  if (n.to === store.cur){ toast('飛ぶ先が、いま開いているマップになっている'); return false; }
+  backStack.push({ map: store.cur, node: id }); if (backStack.length > 30) backStack.shift();
+  openMap(n.to); return true;
+}
+function actBack(){
+  const top = backStack.pop();
+  if (!top || !store.maps[top.map]){ updateBack(); if (top) toast('元のマップが見つからない'); return; }
+  openMap(top.map);
+  if (M.nodes[top.node] && geo.has(top.node)){ sel = top.node; render(); ensureVisible(top.node); }
+}
 function actLinkMode(){
   if (linkFrom){ linkFrom = null; render(); return; }
   if (selLink){
@@ -640,10 +680,15 @@ function navigate(key){
    押している最中に図を描き直しても、押された要素が消えて操作が途切れることが無い。 */
 const ptrs = new Map(); let drag = null; let lastTap = { t: 0, x: 0, y: 0, key: '' };
 function foldDotAt(g){ const down = M.dir === 'down'; return { x: g.x - g.w / 2 + (down ? g.w / 2 : g.w + 11), y: g.y - g.h / 2 + (down ? g.h + 11 : g.h / 2) }; }
+function jumpDotAt(g){ return { x: g.x + g.w / 2 + 3, y: g.y - g.h / 2 - 3 }; }
 function hitAt(wx, wy){
   for (const g of geo.values()){
     const n = M.nodes[g.id]; if (!n.k.length || !(n.f || g.id === sel)) continue;
     const c = foldDotAt(g); if (Math.hypot(wx - c.x, wy - c.y) <= Math.max(10, 13 / S)) return { fold: g.id };
+  }
+  for (const g of geo.values()){
+    if (!M.nodes[g.id].to) continue;
+    const c = jumpDotAt(g); if (Math.hypot(wx - c.x, wy - c.y) <= Math.max(10, 13 / S)) return { jump: g.id };
   }
   let node = null;
   for (const g of geo.values()) if (Math.abs(wx - g.x) <= g.w / 2 && Math.abs(wy - g.y) <= g.h / 2) node = g.id;
@@ -682,6 +727,11 @@ stage.addEventListener('pointerdown', e => {
   if (ptrs.size > 2) return;
   const w = toWorld(e.clientX, e.clientY), hit = hitAt(w.x, w.y);
   if (hit.fold){ drag = { type: 'none' }; sel = hit.fold; selLink = null; actFold(hit.fold); return; }
+  if (hit.jump){
+    /* つなぐ相手を選んでいる途中なら、矢印の丸は箱として扱う。そうでなければ、飛ぶ。飛べなかった時は、その箱を選ぶだけにする。 */
+    if (linkFrom) hit.node = hit.jump;
+    else { drag = { type: 'none' }; const jid = hit.jump; if (!actJump(jid)){ sel = jid; selLink = null; ed.value = ''; render(); } return; }
+  }
   if (hit.link){ drag = { type: 'none' }; sel = null; selLink = hit.link; linkFrom = null; render(); return; }
   if (hit.node){
     if (linkFrom){
@@ -870,6 +920,7 @@ function showHelp(){
     ['切り離す', 'Shift を押しながら動かして離すと、独立したかたまりになる。'],
     ['新しいかたまり', '何も無い所をダブルクリック。'],
     ['離れた2つをつなぐ', '項目を選んで「点線でつなぐ」を押し、相手を押す。線を押して選ぶと、同じボタンで実線と点線を切り替えられる（次に引く線も、最後に選んだ種類になる）。線を選んで Delete で消える。'],
+    ['別のマップへ飛ぶ', '箱を選んで「飛ぶ先」を押し、マップを選ぶ。箱の右上に矢印の丸が付き、それを押すとそのマップに切り替わる。左下の「← 戻る」で元のマップに戻る。'],
     ['たたむ', '箱を選ぶと端に丸が出るので、それを押す。たたむと、隠れている数が出る。'],
     ['画面を動かす', '何も無い所をドラッグするか、ホイール。拡大縮小は Ctrl+ホイールか2本指。'],
     ['選択を移す', '矢印キー。Alt+矢印で並び順を入れ替える。'],
@@ -946,6 +997,24 @@ function actCopyOutline(){ copyText(outlineOf(M, sel || M.roots[0]), '箇条書�
 function bind(id, fn){ $(id).addEventListener('click', () => { fn(); focusGhost(); }); }
 bind('bChild', actChild); bind('bSib', actSib); bind('bEdit', () => { if (sel) beginEdit('keep'); }); bind('bDel', actDelete);
 bind('bFold', () => actFold()); bind('bLink', actLinkMode);
+$('bBack').addEventListener('click', () => { actBack(); focusGhost(); });
+$('bJump').addEventListener('click', () => openMenu($('bJump'), m => {
+  const n = sel ? M.nodes[sel] : null; if (!n) return;
+  if (n.to){
+    const tm = store.maps[n.to];
+    if (tm) mi(m, '「' + tm.data.name + '」へ飛ぶ', () => { actJump(sel); });
+    else m.appendChild(el('div', '飛ぶ先のマップが見つからない', 'note'));
+    mi(m, '飛ぶ先を外す', () => { if (opSetJump(M, sel, null)) commit(); });
+    hr(m);
+  }
+  const others = store.order.filter(id => id !== store.cur);
+  if (!others.length){ m.appendChild(el('div', 'ほかのマップが無い。「一覧」から新しいマップを作ると、ここに出る', 'note')); return; }
+  m.appendChild(el('div', '飛ぶ先にするマップ', 'note'));
+  for (const id of others){
+    const d = store.maps[id].data;
+    mi(m, d.name, () => { if (opSetJump(M, sel, id)){ commit(); toast('箱の右上の矢印を押すと、「' + d.name + '」へ飛ぶ'); } }, n.to === id ? 'cur' : '');
+  }
+}));
 bind('bUndo', () => restore(hi - 1)); bind('bRedo', () => restore(hi + 1));
 bind('bMove', () => { prefs.branch = !prefs.branch; savePrefs(); updateBar(); toast(prefs.branch ? '箱を動かすと、下の枝も一緒に動く' : '動くのは、つかんだ箱だけ'); });
 bind('bTidy', actTidy); bind('bDir', actDir); bind('bFit', fit); bind('bZo', () => zoomBy(1 / 1.25)); bind('bZi', () => zoomBy(1.25));
@@ -994,9 +1063,9 @@ async function start(){
   if (bad) toast('リンクを読み取れなかった');
   focusGhost();
   window.__mm = {
-    core: { newMap, sanitizeMap, opAddChild, opAddRoot, opDelete, opReparent, opDetach, opReorder, opLink, opUnlink, opLinkStyle, parseOutline, outlineOf, computeLayout, wrap, edgePath, edgeCurve, curveDist, boundsOf, b64u, unb64u },
+    core: { newMap, sanitizeMap, opAddChild, opAddRoot, opDelete, opReparent, opDetach, opReorder, opLink, opUnlink, opLinkStyle, opSetJump, parseOutline, outlineOf, computeLayout, wrap, edgePath, edgeCurve, curveDist, boundsOf, b64u, unb64u },
     get M(){ return M; }, get geo(){ return geo; }, get sel(){ return sel; }, get selLink(){ return selLink; }, get editing(){ return editing; }, get view(){ return { S: S, TX: TX, TY: TY }; }, get store(){ return store; },
-    get hist(){ return { n: hist.length, i: hi }; }, get prefs(){ return prefs; }, hitAt: hitAt, makeLink: makeLink, svg: () => svgParts(), ready: true
+    get hist(){ return { n: hist.length, i: hi }; }, get prefs(){ return prefs; }, hitAt: hitAt, jumpDotAt: jumpDotAt, get back(){ return backStack.length; }, makeLink: makeLink, svg: () => svgParts(), ready: true
   };
 }
 start();
