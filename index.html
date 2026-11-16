@@ -411,7 +411,7 @@ function scene(o){
   const dark = o.dark, base = dark ? '#14171c' : '#ffffff', ink = dark ? '#e8ebf0' : '#1c2330', acc = dark ? '#6ea1ff' : '#2f6fde', lk = dark ? '#9aa5b5' : '#5b6676';
   const stroke = i => dark ? mix(COL[i], '#ffffff', 0.25) : COL[i];
   const down = M.dir === 'down';
-  let E = '', L = '', N = '';
+  let E = '', L = '', N = '', G = '';
   for (const g of geo.values()){
     const n = M.nodes[g.id]; const ci = colorOf(M, g.id); const root = n.p == null; const st = root ? ST_ROOT : ST; const rx = root ? 18 : 11;
     if (!root){ const pg = geo.get(n.p); if (pg) E += '<path d="' + edgePath(pg, g, n.m ? null : (down ? 'v' : 'h')) + '" fill="none" stroke="' + stroke(ci) + '" stroke-width="' + (g.depth === 1 ? 2.6 : 1.8) + '" stroke-linecap="round"/>'; }
@@ -437,9 +437,21 @@ function scene(o){
   for (const l of M.links){
     const a = geo.get(l.a), b = geo.get(l.b); if (!a || !b) continue;
     const d = edgePath(a, b); const on = o.screen && l.id === o.selLink;
-    L += '<path d="' + d + '" fill="none" stroke="' + (on ? acc : lk) + '" stroke-width="' + (on ? 2.8 : (l.s ? 2 : 1.7)) + '"' + (l.s ? '' : ' stroke-dasharray="6 5"') + ' stroke-linecap="round"/>';
+    let col = on ? acc : lk;
+    if (l.s && !on){
+      /* 実線は、両端の箱の色に合わせる。色が違う時は、片方の色からもう片方の色へ、途中でなめらかに変える。点線は灰色のまま。 */
+      const ca = stroke(colorOf(M, l.a)), cb = stroke(colorOf(M, l.b));
+      if (ca === cb) col = ca;
+      else {
+        /* 画面用と書き出し用で名前を分ける（印刷の時は両方が同じページに並ぶため）。 */
+        const cu = edgeCurve(a, b), gid = (o.screen ? 'lgs-' : 'lgx-') + l.id;
+        G += '<linearGradient id="' + gid + '" gradientUnits="userSpaceOnUse" x1="' + r1(cu[0]) + '" y1="' + r1(cu[1]) + '" x2="' + r1(cu[6]) + '" y2="' + r1(cu[7]) + '"><stop offset="0" stop-color="' + ca + '"/><stop offset="1" stop-color="' + cb + '"/></linearGradient>';
+        col = 'url(#' + gid + ')';
+      }
+    }
+    L += '<path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="' + (on ? 2.8 : (l.s ? 2 : 1.7)) + '"' + (l.s ? '' : ' stroke-dasharray="6 5"') + ' stroke-linecap="round"/>';
   }
-  return E + L + N;
+  return (G ? '<defs>' + G + '</defs>' : '') + E + L + N;
 }
 function render(){
   geo = computeLayout(M, measure);
