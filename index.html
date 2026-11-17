@@ -114,7 +114,7 @@ function sanitizeMap(o){
     if (Number.isInteger(s.c) && s.c >= 0 && s.c < COL.length) n.c = s.c;
     if (s.f) n.f = true;
     if (typeof s.to === 'string' && okId(s.to)) n.to = s.to;
-    if (p == null){ n.xy = num2(s.xy) || [0, 0]; } else { const m = num2(s.m); if (m) n.m = m; }
+    if (p == null){ n.xy = num2(s.xy) || [0, 0]; } else { const m = num2(s.m); if (m) n.m = m; if (s.d === 1 || s.d === true) n.d = 1; }
     M.nodes[id] = n;
     if (Array.isArray(s.k)) for (const k of s.k){ const ks = String(k); if (take(ks, id, depth + 1)) n.k.push(ks); }
     return true;
@@ -162,7 +162,7 @@ function opReparent(M, id, pid){
 function opDetach(M, id, x, y){
   const n = M.nodes[id]; if (!n || n.p == null) return false;
   const c = colorOf(M, id); const p = M.nodes[n.p]; p.k = p.k.filter(k => k !== id);
-  n.p = null; delete n.m; n.xy = [r1(x), r1(y)]; if (n.c == null) n.c = c; M.roots.push(id); return true;
+  n.p = null; delete n.m; delete n.d; n.xy = [r1(x), r1(y)]; if (n.c == null) n.c = c; M.roots.push(id); return true;
 }
 function opReorder(M, id, d){
   const n = M.nodes[id]; if (!n || n.p == null) return false;
@@ -181,6 +181,13 @@ function opLinkStyle(M, lid, solid){
   const l = M.links.find(x => x.id === lid); if (!l) return false;
   if (!!l.s === !!solid) return false;
   if (solid) l.s = 1; else delete l.s;
+  return true;
+}
+/* 親子をつなぐ線の種類を変える。id は子の箱。dashed が真なら点線、偽なら実線。実線は印を持たない（前からあるデータと同じ形のまま）。 */
+function opEdgeStyle(M, id, dashed){
+  const n = M.nodes[id]; if (!n || n.p == null) return false;
+  if (!!n.d === !!dashed) return false;
+  if (dashed) n.d = 1; else delete n.d;
   return true;
 }
 /* 箱に「別のマップへ飛ぶ先」を付ける・外す。to は飛ぶ先のマップの id。null か空なら外す。印を持たない箱は、前からあるデータと同じ形のまま。 */
@@ -362,6 +369,15 @@ function measure(s, font){
 let store = null, M = null, geo = new Map();
 let S = 1, TX = 0, TY = 0;
 let sel = null, selLink = null, dropId = null, linkFrom = null;
+/* 選んでいる線は selLink に入れる。後からつないだ線はその線の番号（l1 など）、親子の線は「e:」＋子の箱の番号。
+   箱の番号に「:」は使えないので、2つが混ざることは無い。箱を選ぶ所では selLink を必ず空にしているので、線と箱が同時に選ばれることも無い。 */
+function edgeSel(){ return selLink && selLink.indexOf('e:') === 0 ? selLink.slice(2) : null; }
+/* 親子をつなぐ線の曲線（描く時と同じ形）。手で動かした箱は、離れている向きで決める。 */
+function treeCurve(id){
+  const n = M.nodes[id]; if (!n || n.p == null) return null;
+  const g = geo.get(id), pg = geo.get(n.p); if (!g || !pg) return null;
+  return edgeCurve(pg, g, n.m ? null : (M.dir === 'down' ? 'v' : 'h'));
+}
 let editing = false, editNew = false;
 let hist = [], hi = -1, saveT = 0, toastT = 0;
 let menuAnchor = null;
@@ -427,7 +443,14 @@ function scene(o){
   let E = '', L = '', N = '', G = '';
   for (const g of geo.values()){
     const n = M.nodes[g.id]; const ci = colorOf(M, g.id); const root = n.p == null; const st = root ? ST_ROOT : ST; const rx = root ? 18 : 11;
-    if (!root){ const pg = geo.get(n.p); if (pg) E += '<path d="' + edgePath(pg, g, n.m ? null : (down ? 'v' : 'h')) + '" fill="none" stroke="' + stroke(ci) + '" stroke-width="' + (g.depth === 1 ? 2.6 : 1.8) + '" stroke-linecap="round"/>'; }
+    if (!root){
+      const pg = geo.get(n.p);
+      if (pg){
+        /* 親子の線。点線の印（d）がある箱は点線にする。選んでいる線は、色を変えて少し太くする（画面だけ）。 */
+        const on = o.screen && g.id === o.selEdge, sw = g.depth === 1 ? 2.6 : 1.8;
+        E += '<path' + (o.screen ? ' data-edge="' + g.id + '"' : '') + ' d="' + edgePath(pg, g, n.m ? null : (down ? 'v' : 'h')) + '" fill="none" stroke="' + (on ? acc : stroke(ci)) + '" stroke-width="' + (on ? r1(sw + 1) : sw) + '"' + (n.d ? ' stroke-dasharray="6 ' + r1(4 + sw) + '"' : '') + ' stroke-linecap="round"/>';
+      }
+    }
     const fill = root ? (dark ? mix(COL[ci], '#000000', 0.1) : COL[ci]) : mix(base, COL[ci], g.depth === 1 ? (dark ? 0.32 : 0.17) : (dark ? 0.17 : 0.07));
     N += '<g class="nd" data-id="' + g.id + '" transform="translate(' + r1(g.x - g.w / 2) + ' ' + r1(g.y - g.h / 2) + ')">';
     if (o.screen && (g.id === o.drop || g.id === o.sel || g.id === o.linkFrom)){
@@ -474,25 +497,30 @@ function scene(o){
 function render(){
   geo = computeLayout(M, measure);
   if (sel && !geo.has(sel)){ let n = M.nodes[sel]; while (n && !geo.has(n.id)) n = n.p == null ? null : M.nodes[n.p]; sel = n ? n.id : null; }
-  if (selLink && !M.links.some(l => l.id === selLink)) selLink = null;
+  if (selLink){
+    const eg = edgeSel();
+    if (eg ? !(M.nodes[eg] && M.nodes[eg].p != null && geo.has(eg) && geo.has(M.nodes[eg].p)) : !M.links.some(l => l.id === selLink)) selLink = null;
+  }
   if (linkFrom && !geo.has(linkFrom)) linkFrom = null;
-  vp.innerHTML = scene({ dark: darkMq.matches, screen: true, sel: sel, drop: dropId, edit: editing ? sel : null, selLink: selLink, linkFrom: linkFrom });
+  vp.innerHTML = scene({ dark: darkMq.matches, screen: true, sel: sel, drop: dropId, edit: editing ? sel : null, selLink: selLink, selEdge: edgeSel(), linkFrom: linkFrom });
   updateBar(); placeEditor();
 }
 function updateBar(){
   const n = sel ? M.nodes[sel] : null;
-  $('bChild').disabled = !n; $('bSib').disabled = !n; $('bEdit').disabled = !n; $('bDel').disabled = !(n || selLink);
-  $('bColor').disabled = !n; $('bFold').disabled = !(n && n.k.length); $('bFold').textContent = n && n.f ? 'ひらく' : 'たたむ';
   const lkSel = selLink ? M.links.find(l => l.id === selLink) : null;
-  $('bLink').disabled = !n && !linkFrom && !lkSel; $('bLink').classList.toggle('on', !!linkFrom);
+  const egSel = edgeSel() ? M.nodes[edgeSel()] : null;
+  $('bChild').disabled = !n; $('bSib').disabled = !n; $('bEdit').disabled = !n; $('bDel').disabled = !(n || lkSel);
+  $('bColor').disabled = !n; $('bFold').disabled = !(n && n.k.length); $('bFold').textContent = n && n.f ? 'ひらく' : 'たたむ';
+  $('bLink').disabled = !n && !linkFrom && !lkSel && !egSel; $('bLink').classList.toggle('on', !!linkFrom);
   $('bJump').disabled = !n; $('bJump').classList.toggle('on', !!(n && n.to));
-  $('bLink').textContent = lkSel ? (lkSel.s ? '点線にする' : '実線にする') : (prefs.solid ? '実線でつなぐ' : '点線でつなぐ');
-  $('bLink').title = lkSel ? '選んだ線を、実線と点線で切り替える' : '離れた2つを線でつなぐ（線を押して選ぶと、実線と点線を切り替えられる）';
+  $('bLink').textContent = lkSel ? (lkSel.s ? '点線にする' : '実線にする') : egSel ? (egSel.d ? '実線にする' : '点線にする') : (prefs.solid ? '実線でつなぐ' : '点線でつなぐ');
+  $('bLink').title = (lkSel || egSel) ? '選んだ線を、実線と点線で切り替える' : '離れた2つを線でつなぐ（線を押して選ぶと、実線と点線を切り替えられる）';
   $('bUndo').disabled = hi <= 0; $('bRedo').disabled = hi >= hist.length - 1;
   $('bDir').textContent = '向き: ' + (M.dir === 'down' ? '下' : '右');
   $('bMove').textContent = '動かし方: ' + (prefs.branch ? '枝ごと' : '1つ');
   hint.textContent = linkFrom ? 'つなぐ相手の項目を押す（やめる時は Esc か、何も無い所を押す）'
     : lkSel ? (DESKTOP ? '線を選んでいる。上のボタンで実線と点線を切り替え　Delete: 線を消す' : '線を選んでいる。上のボタンで実線と点線を切り替え。「削除」で線を消す')
+    : egSel ? '親子の線を選んでいる。上のボタンで実線と点線を切り替え'
     : DESKTOP ? 'Tab: 子を追加　Enter: 同じ階層に追加　文字を打つ: 書き換え　ドラッグ: 箱を動かす　Ctrl+ホイール: 拡大縮小'
     : '項目を押して選び、上のボタンで足す。2回続けて押すと文字を直せる。2本指で拡大縮小';
 }
@@ -600,6 +628,7 @@ function actSib(){
   startNew(opAddChild(M, n.p, '', M.nodes[n.p].k.indexOf(sel) + 1));
 }
 function actDelete(){
+  if (edgeSel()){ toast('親子の線は消せない。切り離す時は、Shift を押しながら箱を動かす'); return; }
   if (selLink){ opUnlink(M, selLink); selLink = null; commit(); return; }
   if (!sel) return;
   const n = M.nodes[sel]; let next = null;
@@ -637,6 +666,12 @@ function actBack(){
 }
 function actLinkMode(){
   if (linkFrom){ linkFrom = null; render(); return; }
+  if (edgeSel()){
+    /* 親子の線を選んでいる時は、その線の実線と点線を切り替える（後からつなぐ線の種類は変えない）。 */
+    const id = edgeSel(), n = M.nodes[id]; if (!n) return;
+    if (opEdgeStyle(M, id, !n.d)) commit();
+    return;
+  }
   if (selLink){
     /* 線を選んでいる時は、その線の実線と点線を切り替える。次に引く線も、最後に選んだ種類にする。 */
     const l = M.links.find(x => x.id === selLink); if (!l) return;
@@ -694,7 +729,10 @@ function hitAt(wx, wy){
   for (const g of geo.values()) if (Math.abs(wx - g.x) <= g.w / 2 && Math.abs(wy - g.y) <= g.h / 2) node = g.id;
   if (node) return { node: node };
   for (const l of M.links){ const a = geo.get(l.a), b = geo.get(l.b); if (a && b && curveDist(edgeCurve(a, b), wx, wy) <= Math.max(5, 9 / S)) return { link: l.id }; }
-  return {};
+  /* 親子の線。数が多いので、後からつないだ線より少し狭い幅で判定する。重なっている時は、一番近い線にする。 */
+  let eg = null, best = Math.max(4, 7 / S);
+  for (const g of geo.values()){ const c = treeCurve(g.id); if (!c) continue; const dd = curveDist(c, wx, wy); if (dd <= best){ best = dd; eg = g.id; } }
+  return eg ? { edge: eg } : {};
 }
 function findDrop(id, wx, wy){
   const ban = new Set(descendants(M, id)); let best = null;
@@ -743,13 +781,15 @@ stage.addEventListener('pointerdown', e => {
     const g = geo.get(hit.node);
     drag = { type: 'node', id: hit.node, ox: w.x - g.x, oy: w.y - g.y, sx: e.clientX, sy: e.clientY, moved: false, started: false, kids: [], cand: null, timer: 0 };
   } else {
+    /* 親子の線の上で押した時も、画面は動かせるようにしておく。動かさずに離した時だけ、その線を選ぶ。つなぐ相手を選んでいる途中は、線は選ばない。 */
+    const eg = linkFrom ? null : (hit.edge || null);
     if (linkFrom){ linkFrom = null; render(); }
-    drag = { type: 'pan', sx: e.clientX, sy: e.clientY, tx: TX, ty: TY, moved: false };
+    drag = { type: 'pan', sx: e.clientX, sy: e.clientY, tx: TX, ty: TY, moved: false, edge: eg };
   }
 });
 stage.addEventListener('pointermove', e => {
   if (!ptrs.has(e.pointerId)){
-    if (e.pointerType === 'mouse' && e.target !== ed && !drag){ const w = toWorld(e.clientX, e.clientY), h = hitAt(w.x, w.y); stage.style.cursor = (h.node || h.fold || h.link) ? 'pointer' : ''; }
+    if (e.pointerType === 'mouse' && e.target !== ed && !drag){ const w = toWorld(e.clientX, e.clientY), h = hitAt(w.x, w.y); stage.style.cursor = (h.node || h.fold || h.link || h.edge) ? 'pointer' : ''; }
     return;
   }
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -809,6 +849,7 @@ function pointerEnd(e){
       commit();
     } else if (e.type !== 'pointercancel' && tapped(e, 'n:' + d.id)) return;
   } else if (d.type === 'pan' && !d.moved && e.type !== 'pointercancel'){
+    if (d.edge && M.nodes[d.edge] && M.nodes[d.edge].p != null){ lastTap = { t: 0, x: 0, y: 0, key: '' }; sel = null; selLink = 'e:' + d.edge; ed.value = ''; render(); focusGhost(); return; }
     if (tapped(e, 'bg')) return;
     if (sel || selLink){ sel = null; selLink = null; ed.value = ''; render(); }
   }
@@ -920,6 +961,7 @@ function showHelp(){
     ['切り離す', 'Shift を押しながら動かして離すと、独立したかたまりになる。'],
     ['新しいかたまり', '何も無い所をダブルクリック。'],
     ['離れた2つをつなぐ', '項目を選んで「点線でつなぐ」を押し、相手を押す。線を押して選ぶと、同じボタンで実線と点線を切り替えられる（次に引く線も、最後に選んだ種類になる）。線を選んで Delete で消える。'],
+    ['親子の線を点線にする', '親と子をつなぐ線を押して選び、上の「点線にする」を押す。もう一度押すと実線に戻る。変わるのは選んだ1本だけ。'],
     ['別のマップへ飛ぶ', '箱を選んで「飛ぶ先」を押し、マップを選ぶ。箱の右上に矢印の丸が付き、それを押すとそのマップに切り替わる。左下の「← 戻る」で元のマップに戻る。'],
     ['たたむ', '箱を選ぶと端に丸が出るので、それを押す。たたむと、隠れている数が出る。'],
     ['画面を動かす', '何も無い所をドラッグするか、ホイール。拡大縮小は Ctrl+ホイールか2本指。'],
@@ -1063,9 +1105,9 @@ async function start(){
   if (bad) toast('リンクを読み取れなかった');
   focusGhost();
   window.__mm = {
-    core: { newMap, sanitizeMap, opAddChild, opAddRoot, opDelete, opReparent, opDetach, opReorder, opLink, opUnlink, opLinkStyle, opSetJump, parseOutline, outlineOf, computeLayout, wrap, edgePath, edgeCurve, curveDist, boundsOf, b64u, unb64u },
+    core: { newMap, sanitizeMap, opAddChild, opAddRoot, opDelete, opReparent, opDetach, opReorder, opLink, opUnlink, opLinkStyle, opEdgeStyle, opSetJump, parseOutline, outlineOf, computeLayout, wrap, edgePath, edgeCurve, curveDist, boundsOf, b64u, unb64u },
     get M(){ return M; }, get geo(){ return geo; }, get sel(){ return sel; }, get selLink(){ return selLink; }, get editing(){ return editing; }, get view(){ return { S: S, TX: TX, TY: TY }; }, get store(){ return store; },
-    get hist(){ return { n: hist.length, i: hi }; }, get prefs(){ return prefs; }, hitAt: hitAt, jumpDotAt: jumpDotAt, get back(){ return backStack.length; }, makeLink: makeLink, svg: () => svgParts(), ready: true
+    get hist(){ return { n: hist.length, i: hi }; }, get prefs(){ return prefs; }, hitAt: hitAt, jumpDotAt: jumpDotAt, treeCurve: treeCurve, get selEdge(){ return edgeSel(); }, get back(){ return backStack.length; }, makeLink: makeLink, svg: () => svgParts(), ready: true
   };
 }
 start();
