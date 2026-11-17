@@ -114,7 +114,7 @@ function sanitizeMap(o){
     if (Number.isInteger(s.c) && s.c >= 0 && s.c < COL.length) n.c = s.c;
     if (s.f) n.f = true;
     if (typeof s.to === 'string' && okId(s.to)) n.to = s.to;
-    if (p == null){ n.xy = num2(s.xy) || [0, 0]; } else { const m = num2(s.m); if (m) n.m = m; if (s.d === 1 || s.d === true) n.d = 1; }
+    if (p == null){ n.xy = num2(s.xy) || [0, 0]; } else { const m = num2(s.m); if (m) n.m = m; if (s.d === 1 || s.d === true) n.d = 1; else if (s.d === 2) n.d = 2; }
     M.nodes[id] = n;
     if (Array.isArray(s.k)) for (const k of s.k){ const ks = String(k); if (take(ks, id, depth + 1)) n.k.push(ks); }
     return true;
@@ -183,11 +183,13 @@ function opLinkStyle(M, lid, solid){
   if (solid) l.s = 1; else delete l.s;
   return true;
 }
-/* 親子をつなぐ線の種類を変える。id は子の箱。dashed が真なら点線、偽なら実線。実線は印を持たない（前からあるデータと同じ形のまま）。 */
-function opEdgeStyle(M, id, dashed){
+/* 親子をつなぐ線の種類を変える。id は子の箱。style は 0（偽）＝実線、1（真）＝点線、2＝線なし。
+   実線は印を持たない（前からあるデータと同じ形のまま）。線なしでも箱は子のままで、置き場所も色も変わらない。 */
+function opEdgeStyle(M, id, style){
   const n = M.nodes[id]; if (!n || n.p == null) return false;
-  if (!!n.d === !!dashed) return false;
-  if (dashed) n.d = 1; else delete n.d;
+  const v = style === 2 ? 2 : (style ? 1 : 0);
+  if ((n.d || 0) === v) return false;
+  if (v) n.d = v; else delete n.d;
   return true;
 }
 /* 箱に「別のマップへ飛ぶ先」を付ける・外す。to は飛ぶ先のマップの id。null か空なら外す。印を持たない箱は、前からあるデータと同じ形のまま。 */
@@ -448,7 +450,13 @@ function scene(o){
       if (pg){
         /* 親子の線。点線の印（d）がある箱は点線にする。選んでいる線は、色を変えて少し太くする（画面だけ）。 */
         const on = o.screen && g.id === o.selEdge, sw = g.depth === 1 ? 2.6 : 1.8;
-        E += '<path' + (o.screen ? ' data-edge="' + g.id + '"' : '') + ' d="' + edgePath(pg, g, n.m ? null : (down ? 'v' : 'h')) + '" fill="none" stroke="' + (on ? acc : stroke(ci)) + '" stroke-width="' + (on ? r1(sw + 1) : sw) + '"' + (n.d ? ' stroke-dasharray="6 ' + r1(4 + sw) + '"' : '') + ' stroke-linecap="round"/>';
+        const dpath = edgePath(pg, g, n.m ? null : (down ? 'v' : 'h'));
+        if (n.d === 2){
+          /* 線なし。ふだんは何も描かない（書き出しにも出ない）。選んでいる間だけ、どの線かが分かるように薄い点で出す。 */
+          if (on) E += '<path data-edge="' + g.id + '" data-ghost="1" d="' + dpath + '" fill="none" stroke="' + acc + '" stroke-width="2.2" stroke-dasharray="1 7" stroke-linecap="round" opacity="0.8"/>';
+        } else {
+          E += '<path' + (o.screen ? ' data-edge="' + g.id + '"' : '') + ' d="' + dpath + '" fill="none" stroke="' + (on ? acc : stroke(ci)) + '" stroke-width="' + (on ? r1(sw + 1) : sw) + '"' + (n.d ? ' stroke-dasharray="6 ' + r1(4 + sw) + '"' : '') + ' stroke-linecap="round"/>';
+        }
       }
     }
     const fill = root ? (dark ? mix(COL[ci], '#000000', 0.1) : COL[ci]) : mix(base, COL[ci], g.depth === 1 ? (dark ? 0.32 : 0.17) : (dark ? 0.17 : 0.07));
@@ -513,14 +521,14 @@ function updateBar(){
   $('bColor').disabled = !n; $('bFold').disabled = !(n && n.k.length); $('bFold').textContent = n && n.f ? 'ひらく' : 'たたむ';
   $('bLink').disabled = !n && !linkFrom && !lkSel && !egSel; $('bLink').classList.toggle('on', !!linkFrom);
   $('bJump').disabled = !n; $('bJump').classList.toggle('on', !!(n && n.to));
-  $('bLink').textContent = lkSel ? (lkSel.s ? '点線にする' : '実線にする') : egSel ? (egSel.d ? '実線にする' : '点線にする') : (prefs.solid ? '実線でつなぐ' : '点線でつなぐ');
-  $('bLink').title = (lkSel || egSel) ? '選んだ線を、実線と点線で切り替える' : '離れた2つを線でつなぐ（線を押して選ぶと、実線と点線を切り替えられる）';
+  $('bLink').textContent = lkSel ? (lkSel.s ? '点線にする' : '実線にする') : egSel ? (egSel.d === 2 ? '実線にする' : egSel.d ? '線を消す' : '点線にする') : (prefs.solid ? '実線でつなぐ' : '点線でつなぐ');
+  $('bLink').title = lkSel ? '選んだ線を、実線と点線で切り替える' : egSel ? '選んだ親子の線を、点線・線なし・実線の順に切り替える' : '離れた2つを線でつなぐ（線を押して選ぶと、実線と点線を切り替えられる）';
   $('bUndo').disabled = hi <= 0; $('bRedo').disabled = hi >= hist.length - 1;
   $('bDir').textContent = '向き: ' + (M.dir === 'down' ? '下' : '右');
   $('bMove').textContent = '動かし方: ' + (prefs.branch ? '枝ごと' : '1つ');
   hint.textContent = linkFrom ? 'つなぐ相手の項目を押す（やめる時は Esc か、何も無い所を押す）'
     : lkSel ? (DESKTOP ? '線を選んでいる。上のボタンで実線と点線を切り替え　Delete: 線を消す' : '線を選んでいる。上のボタンで実線と点線を切り替え。「削除」で線を消す')
-    : egSel ? '親子の線を選んでいる。上のボタンで実線と点線を切り替え'
+    : egSel ? (egSel.d === 2 ? '消してある親子の線を選んでいる。上のボタンで実線に戻せる' : '親子の線を選んでいる。上のボタンを押すたびに、点線 → 線なし → 実線と替わる')
     : DESKTOP ? 'Tab: 子を追加　Enter: 同じ階層に追加　文字を打つ: 書き換え　ドラッグ: 箱を動かす　Ctrl+ホイール: 拡大縮小'
     : '項目を押して選び、上のボタンで足す。2回続けて押すと文字を直せる。2本指で拡大縮小';
 }
@@ -667,9 +675,9 @@ function actBack(){
 function actLinkMode(){
   if (linkFrom){ linkFrom = null; render(); return; }
   if (edgeSel()){
-    /* 親子の線を選んでいる時は、その線の実線と点線を切り替える（後からつなぐ線の種類は変えない）。 */
+    /* 親子の線を選んでいる時は、押すたびに 実線 → 点線 → 線なし → 実線 と替える（後からつなぐ線の種類は変えない）。 */
     const id = edgeSel(), n = M.nodes[id]; if (!n) return;
-    if (opEdgeStyle(M, id, !n.d)) commit();
+    if (opEdgeStyle(M, id, n.d === 2 ? 0 : (n.d ? 2 : 1))) commit();
     return;
   }
   if (selLink){
@@ -961,7 +969,7 @@ function showHelp(){
     ['切り離す', 'Shift を押しながら動かして離すと、独立したかたまりになる。'],
     ['新しいかたまり', '何も無い所をダブルクリック。'],
     ['離れた2つをつなぐ', '項目を選んで「点線でつなぐ」を押し、相手を押す。線を押して選ぶと、同じボタンで実線と点線を切り替えられる（次に引く線も、最後に選んだ種類になる）。線を選んで Delete で消える。'],
-    ['親子の線を点線にする', '親と子をつなぐ線を押して選び、上の「点線にする」を押す。もう一度押すと実線に戻る。変わるのは選んだ1本だけ。'],
+    ['親子の線を点線にする・消す', '親と子をつなぐ線を押して選び、上のボタンを押す。押すたびに、点線 → 線なし → 実線と替わる。変わるのは選んだ1本だけ。線を消しても箱は子のままで、消した線は元の場所を押すと薄く出て選び直せる。'],
     ['別のマップへ飛ぶ', '箱を選んで「飛ぶ先」を押し、マップを選ぶ。箱の右上に矢印の丸が付き、それを押すとそのマップに切り替わる。左下の「← 戻る」で元のマップに戻る。'],
     ['たたむ', '箱を選ぶと端に丸が出るので、それを押す。たたむと、隠れている数が出る。'],
     ['画面を動かす', '何も無い所をドラッグするか、ホイール。拡大縮小は Ctrl+ホイールか2本指。'],
