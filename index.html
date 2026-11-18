@@ -51,6 +51,11 @@ button.on{background:var(--accent);color:#fff}
 .card .row .pri{background:var(--accent);color:#fff;border-color:var(--accent)}
 .card textarea{width:100%;height:110px;font:12px/1.4 ui-monospace,Consolas,monospace;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}
 .menu .note{padding:6px 10px;color:var(--sub);font-size:12px}
+.menu .head{padding:9px 10px 2px;color:var(--sub);font-size:11px;font-weight:700;letter-spacing:.04em}
+.menu .tg{margin-left:8px;font-size:11px;font-weight:500;color:var(--sub);border:1px solid var(--line);border-radius:999px;padding:1px 7px;white-space:nowrap}
+#bTag{max-width:130px;overflow:hidden;text-overflow:ellipsis;border-color:var(--line);border-radius:999px;font-size:12px;padding:4px 10px;color:var(--sub)}
+#bTag.has{color:var(--ink);font-weight:600}
+.card input[type=text]{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
 #bBack{position:fixed;left:12px;bottom:42px;z-index:15;padding:7px 13px;border-radius:999px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);font-size:13px;max-width:min(380px,84vw);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #bBack[hidden]{display:none}
 #printbox{display:none}
@@ -59,7 +64,7 @@ button.on{background:var(--accent);color:#fff}
 </head>
 <body>
 <header>
-  <div class="grp"><input id="mapName" maxlength="60" aria-label="マップの名前" spellcheck="false"><button id="bMaps" type="button" title="マップの一覧">一覧 ▾</button></div>
+  <div class="grp"><input id="mapName" maxlength="60" aria-label="マップの名前" spellcheck="false"><button id="bTag" type="button" title="このマップのラベル（一覧で、ラベルごとにまとめて並べられる）">ラベル</button><button id="bMaps" type="button" title="マップの一覧">一覧 ▾</button></div>
   <div class="grp"><button id="bChild" type="button" title="子を追加（Tab）">＋ 子</button><button id="bSib" type="button" title="同じ階層に追加（Enter）">＋ 並び</button><button id="bEdit" type="button" title="文字を直す（F2 かダブルクリック）">編集</button><button id="bDel" type="button" title="消す（Delete）">削除</button></div>
   <div class="grp"><button id="bColor" type="button" title="色を変える">色</button><button id="bFold" type="button" title="下の枝をたたむ／ひらく">たたむ</button><button id="bLink" type="button" title="離れた2つを線でつなぐ（線を押して選ぶと、実線と点線を切り替えられる）">点線でつなぐ</button><button id="bJump" type="button" title="この箱から、別のマップへ飛べるようにする">飛ぶ先</button></div>
   <div class="grp"><button id="bUndo" type="button" title="元に戻す（Ctrl+Z）">↶ 戻す</button><button id="bRedo" type="button" title="やり直す（Ctrl+Y）">↷</button></div>
@@ -104,6 +109,7 @@ function nid(M){ let id; do { M.seq = (M.seq || 0) + 1; id = 'n' + M.seq.toStrin
 function sanitizeMap(o){
   if (!o || typeof o !== 'object' || !o.nodes || typeof o.nodes !== 'object' || !Array.isArray(o.roots)) return null;
   const M = { v: 1, name: String(o.name == null ? 'マップ' : o.name).slice(0, 60) || 'マップ', dir: o.dir === 'down' ? 'down' : 'right', seq: 0, nodes: {}, roots: [], links: [] };
+  { const tg = cleanTag(o.tag); if (tg) M.tag = tg; }
   const seen = new Set(); let count = 0;
   const num2 = a => (Array.isArray(a) && a.length === 2 && typeof a[0] === 'number' && typeof a[1] === 'number' && isFinite(a[0]) && isFinite(a[1])) ? [r1(Math.max(-1e6, Math.min(1e6, a[0]))), r1(Math.max(-1e6, Math.min(1e6, a[1])))] : null;
   function take(id, p, depth){
@@ -191,6 +197,28 @@ function opEdgeStyle(M, id, style){
   if ((n.d || 0) === v) return false;
   if (v) n.d = v; else delete n.d;
   return true;
+}
+/* マップのラベル（分類の名前）。1行・16字まで。文字でない物や空白だけの物は、ラベルなしとして扱う。 */
+function cleanTag(s){
+  if (typeof s !== 'string') return '';
+  const one = s.split(NL).join(' ').split(CR).join(' ').split(TAB).join(' ').trim();
+  return Array.from(one).slice(0, 16).join('').trim();
+}
+/* マップにラベルを付ける・外す。空なら外す。ラベルの無いマップは、前からあるデータと同じ形のまま。 */
+function opSetTag(M, tag){
+  const t = cleanTag(tag);
+  if ((M.tag || '') === t) return false;
+  if (t) M.tag = t; else delete M.tag;
+  return true;
+}
+/* 一覧をラベルごとにまとめる。list は [{ id, tag }]。ラベルは文字の順（英数字 → かな → 漢字）に並べ、ラベルの無いものは最後。同じラベルの中は、もとの順のまま。
+   返すのは行の並びで、{ head: ラベル } が見出し（ラベルなしは head が空）、{ id } がマップ。ラベルが1つも無い時は、見出しを入れずにそのまま返す。 */
+function groupByTag(list){
+  if (!list.some(x => x.tag)) return list.map(x => ({ id: x.id }));
+  const tags = Array.from(new Set(list.map(x => x.tag || ''))).sort((a, b) => a === b ? 0 : a === '' ? 1 : b === '' ? -1 : a < b ? -1 : 1);
+  const out = [];
+  for (const t of tags){ out.push({ head: t }); for (const x of list) if ((x.tag || '') === t) out.push({ id: x.id }); }
+  return out;
 }
 /* 箱に「別のマップへ飛ぶ先」を付ける・外す。to は飛ぶ先のマップの id。null か空なら外す。印を持たない箱は、前からあるデータと同じ形のまま。 */
 function opSetJump(M, id, to){
@@ -385,8 +413,8 @@ let hist = [], hi = -1, saveT = 0, toastT = 0;
 let menuAnchor = null;
 let backStack = [];
 const PKEY = 'mm_prefs_v1';
-let prefs = { branch: false, solid: false };
-try { const pp = JSON.parse(localStorage.getItem(PKEY) || 'null'); if (pp && typeof pp === 'object'){ prefs.branch = !!pp.branch; prefs.solid = !!pp.solid; } } catch (e){}
+let prefs = { branch: false, solid: false, byTag: false };
+try { const pp = JSON.parse(localStorage.getItem(PKEY) || 'null'); if (pp && typeof pp === 'object'){ prefs.branch = !!pp.branch; prefs.solid = !!pp.solid; prefs.byTag = !!pp.byTag; } } catch (e){}
 function savePrefs(){ try { localStorage.setItem(PKEY, JSON.stringify(prefs)); } catch (e){} }
 
 /* ---------- 保存（このブラウザの中だけ。外へは送らない） ---------- */
@@ -525,6 +553,7 @@ function updateBar(){
   $('bLink').title = lkSel ? '選んだ線を、実線と点線で切り替える' : egSel ? '選んだ親子の線を、点線・線なし・実線の順に切り替える' : '離れた2つを線でつなぐ（線を押して選ぶと、実線と点線を切り替えられる）';
   $('bUndo').disabled = hi <= 0; $('bRedo').disabled = hi >= hist.length - 1;
   $('bDir').textContent = '向き: ' + (M.dir === 'down' ? '下' : '右');
+  $('bTag').textContent = M.tag || 'ラベル'; $('bTag').classList.toggle('has', !!M.tag);
   $('bMove').textContent = '動かし方: ' + (prefs.branch ? '枝ごと' : '1つ');
   hint.textContent = linkFrom ? 'つなぐ相手の項目を押す（やめる時は Esc か、何も無い所を押す）'
     : lkSel ? (DESKTOP ? '線を選んでいる。上のボタンで実線と点線を切り替え　Delete: 線を消す' : '線を選んでいる。上のボタンで実線と点線を切り替え。「削除」で線を消す')
@@ -971,6 +1000,7 @@ function showHelp(){
     ['離れた2つをつなぐ', '項目を選んで「点線でつなぐ」を押し、相手を押す。線を押して選ぶと、同じボタンで実線と点線を切り替えられる（次に引く線も、最後に選んだ種類になる）。線を選んで Delete で消える。'],
     ['親子の線を点線にする・消す', '親と子をつなぐ線を押して選び、上のボタンを押す。押すたびに、点線 → 線なし → 実線と替わる。変わるのは選んだ1本だけ。線を消しても箱は子のままで、消した線は元の場所を押すと薄く出て選び直せる。'],
     ['別のマップへ飛ぶ', '箱を選んで「飛ぶ先」を押し、マップを選ぶ。箱の右上に矢印の丸が付き、それを押すとそのマップに切り替わる。左下の「← 戻る」で元のマップに戻る。'],
+    ['ラベルで分ける', 'マップの名前の横の「ラベル」を押して、ラベルを選ぶか、新しく作る。ラベルが付くと、「一覧」に「並び」が出る。押すと、ラベルごとにまとめて並ぶ。ラベルはマップと一緒に保存され、共有リンクやファイルにも入る。'],
     ['たたむ', '箱を選ぶと端に丸が出るので、それを押す。たたむと、隠れている数が出る。'],
     ['画面を動かす', '何も無い所をドラッグするか、ホイール。拡大縮小は Ctrl+ホイールか2本指。'],
     ['選択を移す', '矢印キー。Alt+矢印で並び順を入れ替える。'],
@@ -1043,6 +1073,41 @@ async function copyText(text, okMsg, title, body){
 async function actShare(){ copyText(await makeLink(), 'リンクをコピーした。マップの中身はリンクそのものに入っている', '共有リンク', 'このリンクを開くと、同じマップが入った状態で始まる。中身はリンクそのものに入っていて、どこにも送られない。'); }
 function actCopyOutline(){ copyText(outlineOf(M, sel || M.roots[0]), '箇条書きでコピーした', '箇条書き', '選んだ項目から下を、字下げつきの文字にしたもの。'); }
 
+/* ---------- マップのラベル ---------- */
+function tagOf(id){ const e = store.maps[id]; return (e && e.data.tag) || ''; }
+function tagList(ids){ return ids.map(id => ({ id: id, tag: tagOf(id) })); }
+function allTags(){ return groupByTag(tagList(store.order)).filter(r => r.head).map(r => r.head); }
+/* 一覧と「飛ぶ先」で同じ並びを使う。ラベル順の時は見出しを出し、作った順の時は名前の横にラベルを小さく出す。 */
+function listMaps(m, ids, label, fn, isCur){
+  const rows = prefs.byTag ? groupByTag(tagList(ids)) : ids.map(id => ({ id: id }));
+  for (const r of rows){
+    if (r.id === undefined){ m.appendChild(el('div', r.head || 'ラベルなし', 'head')); continue; }
+    const b = mi(m, label(r.id), () => fn(r.id), isCur(r.id) ? 'cur' : '');
+    const tg = tagOf(r.id); if (tg && !prefs.byTag) b.appendChild(el('span', tg, 'tg'));
+  }
+}
+function setTag(tag){ if (opSetTag(M, tag)){ commit(); toast(M.tag ? 'ラベルを「' + M.tag + '」にした' : 'ラベルを外した'); } }
+function askTag(){
+  let inp = null;
+  showModal(c => {
+    c.appendChild(el('h2', '新しいラベル')); c.appendChild(el('p', 'このマップに付ける分類の名前（16字まで）。同じラベルのマップは、一覧でまとめて並べられる。'));
+    inp = document.createElement('input'); inp.type = 'text'; inp.id = 'tagIn'; inp.maxLength = 16; inp.value = M.tag || ''; inp.spellcheck = false; inp.autocomplete = 'off'; inp.setAttribute('aria-label', 'ラベル');
+    c.appendChild(inp);
+    const done = () => { const v = inp.value; closeModal(); setTag(v); };
+    const row = el('div', null, 'row'); const no = el('button', 'やめる'); const ok = el('button', '決める', 'pri');
+    no.type = 'button'; ok.type = 'button'; no.addEventListener('click', closeModal); ok.addEventListener('click', done);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229){ e.preventDefault(); done(); } });
+    row.appendChild(no); row.appendChild(ok); c.appendChild(row);
+  });
+  inp.focus(); inp.select();
+}
+$('bTag').addEventListener('click', () => openMenu($('bTag'), m => {
+  m.appendChild(el('div', 'このマップのラベル', 'note'));
+  for (const t of allTags()) mi(m, t, () => setTag(t), M.tag === t ? 'cur' : '');
+  mi(m, '＋ 新しいラベル…', askTag);
+  if (M.tag){ hr(m); mi(m, 'ラベルを外す', () => setTag('')); }
+}));
+
 /* ---------- ボタン ---------- */
 function bind(id, fn){ $(id).addEventListener('click', () => { fn(); focusGhost(); }); }
 bind('bChild', actChild); bind('bSib', actSib); bind('bEdit', () => { if (sel) beginEdit('keep'); }); bind('bDel', actDelete);
@@ -1060,10 +1125,7 @@ $('bJump').addEventListener('click', () => openMenu($('bJump'), m => {
   const others = store.order.filter(id => id !== store.cur);
   if (!others.length){ m.appendChild(el('div', 'ほかのマップが無い。「一覧」から新しいマップを作ると、ここに出る', 'note')); return; }
   m.appendChild(el('div', '飛ぶ先にするマップ', 'note'));
-  for (const id of others){
-    const d = store.maps[id].data;
-    mi(m, d.name, () => { if (opSetJump(M, sel, id)){ commit(); toast('箱の右上の矢印を押すと、「' + d.name + '」へ飛ぶ'); } }, n.to === id ? 'cur' : '');
-  }
+  listMaps(m, others, id => store.maps[id].data.name, id => { if (opSetJump(M, sel, id)){ commit(); toast('箱の右上の矢印を押すと、「' + store.maps[id].data.name + '」へ飛ぶ'); } }, id => n.to === id);
 }));
 bind('bUndo', () => restore(hi - 1)); bind('bRedo', () => restore(hi + 1));
 bind('bMove', () => { prefs.branch = !prefs.branch; savePrefs(); updateBar(); toast(prefs.branch ? '箱を動かすと、下の枝も一緒に動く' : '動くのは、つかんだ箱だけ'); });
@@ -1075,7 +1137,8 @@ $('bColor').addEventListener('click', () => openMenu($('bColor'), m => {
   m.appendChild(sw); hr(m); mi(m, '親と同じ色に戻す', () => actColor(null));
 }));
 $('bMaps').addEventListener('click', () => openMenu($('bMaps'), m => {
-  for (const id of store.order){ const d = store.maps[id].data; mi(m, d.name + '（' + Object.keys(d.nodes).length + '）', () => { if (id !== store.cur) openMap(id); }, id === store.cur ? 'cur' : ''); }
+  listMaps(m, store.order, id => { const d = store.maps[id].data; return d.name + '（' + Object.keys(d.nodes).length + '）'; }, id => { if (id !== store.cur) openMap(id); }, id => id === store.cur);
+  if (store.order.some(id => tagOf(id))){ hr(m); mi(m, '並び: ' + (prefs.byTag ? 'ラベル順' : '作った順'), () => { prefs.byTag = !prefs.byTag; savePrefs(); $('bMaps').click(); }); }
   hr(m);
   mi(m, '＋ 新しいマップ', () => { addMap(newMap()); sel = M.roots[0]; render(); beginEdit('all'); });
   mi(m, 'このマップを複製', () => { const c = sanitizeMap(JSON.parse(JSON.stringify(M))); c.name = (M.name + ' のコピー').slice(0, 60); addMap(c); });
@@ -1113,7 +1176,7 @@ async function start(){
   if (bad) toast('リンクを読み取れなかった');
   focusGhost();
   window.__mm = {
-    core: { newMap, sanitizeMap, opAddChild, opAddRoot, opDelete, opReparent, opDetach, opReorder, opLink, opUnlink, opLinkStyle, opEdgeStyle, opSetJump, parseOutline, outlineOf, computeLayout, wrap, edgePath, edgeCurve, curveDist, boundsOf, b64u, unb64u },
+    core: { newMap, sanitizeMap, opAddChild, opAddRoot, opDelete, opReparent, opDetach, opReorder, opLink, opUnlink, opLinkStyle, opEdgeStyle, opSetJump, cleanTag, opSetTag, groupByTag, parseOutline, outlineOf, computeLayout, wrap, edgePath, edgeCurve, curveDist, boundsOf, b64u, unb64u },
     get M(){ return M; }, get geo(){ return geo; }, get sel(){ return sel; }, get selLink(){ return selLink; }, get editing(){ return editing; }, get view(){ return { S: S, TX: TX, TY: TY }; }, get store(){ return store; },
     get hist(){ return { n: hist.length, i: hi }; }, get prefs(){ return prefs; }, hitAt: hitAt, jumpDotAt: jumpDotAt, treeCurve: treeCurve, get selEdge(){ return edgeSel(); }, get back(){ return backStack.length; }, makeLink: makeLink, svg: () => svgParts(), ready: true
   };
