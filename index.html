@@ -51,7 +51,10 @@ button.on{background:var(--accent);color:#fff}
 .card .row .pri{background:var(--accent);color:#fff;border-color:var(--accent)}
 .card textarea{width:100%;height:110px;font:12px/1.4 ui-monospace,Consolas,monospace;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}
 .menu .note{padding:6px 10px;color:var(--sub);font-size:12px}
-.menu .head{padding:9px 10px 2px;color:var(--sub);font-size:11px;font-weight:700;letter-spacing:.04em}
+.menu .tf{display:flex;gap:6px;flex-wrap:wrap;padding:6px 8px 4px}
+.menu .tf button{display:inline-block;width:auto;padding:4px 12px;border:1px solid var(--line);border-radius:999px;font-size:12px;white-space:nowrap}
+.menu .tf button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#bMaps{max-width:210px;overflow:hidden;text-overflow:ellipsis}
 .menu .tg{margin-left:8px;font-size:11px;font-weight:500;color:var(--sub);border:1px solid var(--line);border-radius:999px;padding:1px 7px;white-space:nowrap}
 #bTag{max-width:130px;overflow:hidden;text-overflow:ellipsis;border-color:var(--line);border-radius:999px;font-size:12px;padding:4px 10px;color:var(--sub)}
 #bTag.has{color:var(--ink);font-weight:600}
@@ -413,8 +416,8 @@ let hist = [], hi = -1, saveT = 0, toastT = 0;
 let menuAnchor = null;
 let backStack = [];
 const PKEY = 'mm_prefs_v1';
-let prefs = { branch: false, solid: false, byTag: false };
-try { const pp = JSON.parse(localStorage.getItem(PKEY) || 'null'); if (pp && typeof pp === 'object'){ prefs.branch = !!pp.branch; prefs.solid = !!pp.solid; prefs.byTag = !!pp.byTag; } } catch (e){}
+let prefs = { branch: false, solid: false, tag: '' };
+try { const pp = JSON.parse(localStorage.getItem(PKEY) || 'null'); if (pp && typeof pp === 'object'){ prefs.branch = !!pp.branch; prefs.solid = !!pp.solid; prefs.tag = cleanTag(pp.tag); } } catch (e){}
 function savePrefs(){ try { localStorage.setItem(PKEY, JSON.stringify(prefs)); } catch (e){} }
 
 /* ---------- 保存（このブラウザの中だけ。外へは送らない） ---------- */
@@ -554,6 +557,7 @@ function updateBar(){
   $('bUndo').disabled = hi <= 0; $('bRedo').disabled = hi >= hist.length - 1;
   $('bDir').textContent = '向き: ' + (M.dir === 'down' ? '下' : '右');
   $('bTag').textContent = M.tag || 'ラベル'; $('bTag').classList.toggle('has', !!M.tag);
+  { const f = curFilter(); $('bMaps').textContent = f ? '一覧: ' + f + ' ▾' : '一覧 ▾'; }
   $('bMove').textContent = '動かし方: ' + (prefs.branch ? '枝ごと' : '1つ');
   hint.textContent = linkFrom ? 'つなぐ相手の項目を押す（やめる時は Esc か、何も無い所を押す）'
     : lkSel ? (DESKTOP ? '線を選んでいる。上のボタンで実線と点線を切り替え　Delete: 線を消す' : '線を選んでいる。上のボタンで実線と点線を切り替え。「削除」で線を消す')
@@ -1000,7 +1004,7 @@ function showHelp(){
     ['離れた2つをつなぐ', '項目を選んで「点線でつなぐ」を押し、相手を押す。線を押して選ぶと、同じボタンで実線と点線を切り替えられる（次に引く線も、最後に選んだ種類になる）。線を選んで Delete で消える。'],
     ['親子の線を点線にする・消す', '親と子をつなぐ線を押して選び、上のボタンを押す。押すたびに、点線 → 線なし → 実線と替わる。変わるのは選んだ1本だけ。線を消しても箱は子のままで、消した線は元の場所を押すと薄く出て選び直せる。'],
     ['別のマップへ飛ぶ', '箱を選んで「飛ぶ先」を押し、マップを選ぶ。箱の右上に矢印の丸が付き、それを押すとそのマップに切り替わる。左下の「← 戻る」で元のマップに戻る。'],
-    ['ラベルで分ける', 'マップの名前の横の「ラベル」を押して、ラベルを選ぶか、新しく作る。ラベルが付くと、「一覧」に「並び」が出る。押すと、ラベルごとにまとめて並ぶ。ラベルはマップと一緒に保存され、共有リンクやファイルにも入る。'],
+    ['ラベルで絞る', 'マップの名前の横の「ラベル」を押して、ラベルを選ぶか、新しく作る。ラベルが付くと、「一覧」の上にラベルが並ぶ。押すと、そのラベルのマップだけが出る。「すべて」で戻る。絞っている間に作ったマップには、そのラベルが付く。ラベルはマップと一緒に保存され、共有リンクやファイルにも入る。'],
     ['たたむ', '箱を選ぶと端に丸が出るので、それを押す。たたむと、隠れている数が出る。'],
     ['画面を動かす', '何も無い所をドラッグするか、ホイール。拡大縮小は Ctrl+ホイールか2本指。'],
     ['選択を移す', '矢印キー。Alt+矢印で並び順を入れ替える。'],
@@ -1077,13 +1081,18 @@ function actCopyOutline(){ copyText(outlineOf(M, sel || M.roots[0]), '箇条書�
 function tagOf(id){ const e = store.maps[id]; return (e && e.data.tag) || ''; }
 function tagList(ids){ return ids.map(id => ({ id: id, tag: tagOf(id) })); }
 function allTags(){ return groupByTag(tagList(store.order)).filter(r => r.head).map(r => r.head); }
-/* 一覧と「飛ぶ先」で同じ並びを使う。ラベル順の時は見出しを出し、作った順の時は名前の横にラベルを小さく出す。 */
-function listMaps(m, ids, label, fn, isCur){
-  const rows = prefs.byTag ? groupByTag(tagList(ids)) : ids.map(id => ({ id: id }));
-  for (const r of rows){
-    if (r.id === undefined){ m.appendChild(el('div', r.head || 'ラベルなし', 'head')); continue; }
-    const b = mi(m, label(r.id), () => fn(r.id), isCur(r.id) ? 'cur' : '');
-    const tg = tagOf(r.id); if (tg && !prefs.byTag) b.appendChild(el('span', tg, 'tg'));
+/* 一覧を絞っているラベル。そのラベルのマップが1つも無くなっていたら、絞り込みをやめる。 */
+function curFilter(){
+  const t = prefs.tag;
+  if (t && !store.order.some(id => tagOf(id) === t)){ prefs.tag = ''; savePrefs(); return ''; }
+  return t || '';
+}
+/* マップを並べる。only にラベルを渡すと、そのラベルのマップだけを出す。渡さない時は全部出して、名前の横にラベルを小さく出す。 */
+function listMaps(m, ids, label, fn, isCur, only){
+  for (const id of ids){
+    const tg = tagOf(id); if (only && tg !== only) continue;
+    const b = mi(m, label(id), () => fn(id), isCur(id) ? 'cur' : '');
+    if (tg && !only) b.appendChild(el('span', tg, 'tg'));
   }
 }
 function setTag(tag){ if (opSetTag(M, tag)){ commit(); toast(M.tag ? 'ラベルを「' + M.tag + '」にした' : 'ラベルを外した'); } }
@@ -1137,14 +1146,23 @@ $('bColor').addEventListener('click', () => openMenu($('bColor'), m => {
   m.appendChild(sw); hr(m); mi(m, '親と同じ色に戻す', () => actColor(null));
 }));
 $('bMaps').addEventListener('click', () => openMenu($('bMaps'), m => {
-  listMaps(m, store.order, id => { const d = store.maps[id].data; return d.name + '（' + Object.keys(d.nodes).length + '）'; }, id => { if (id !== store.cur) openMap(id); }, id => id === store.cur);
-  if (store.order.some(id => tagOf(id))){ hr(m); mi(m, '並び: ' + (prefs.byTag ? 'ラベル順' : '作った順'), () => { prefs.byTag = !prefs.byTag; savePrefs(); $('bMaps').click(); }); }
+  /* ラベルが1つでもあれば、上にラベルを並べる。押すと、そのラベルのマップだけが出る。「すべて」で戻る。 */
+  const flt = curFilter(), tags = allTags();
+  if (tags.length){
+    const tf = el('div', null, 'tf');
+    const pick = t => { prefs.tag = t; savePrefs(); updateBar(); $('bMaps').click(); };
+    mi(tf, 'すべて', () => pick(''), flt ? '' : 'on');
+    for (const t of tags) mi(tf, t, () => pick(t), flt === t ? 'on' : '');
+    m.appendChild(tf); hr(m);
+  }
+  listMaps(m, store.order, id => { const d = store.maps[id].data; return d.name + '（' + Object.keys(d.nodes).length + '）'; }, id => { if (id !== store.cur) openMap(id); }, id => id === store.cur, flt);
   hr(m);
-  mi(m, '＋ 新しいマップ', () => { addMap(newMap()); sel = M.roots[0]; render(); beginEdit('all'); });
+  /* 絞っている間に作ったマップには、そのラベルを付ける（作ったとたんに一覧から消えないように）。 */
+  mi(m, '＋ 新しいマップ', () => { const nm = newMap(); const f = curFilter(); if (f) nm.tag = f; addMap(nm); sel = M.roots[0]; render(); beginEdit('all'); });
   mi(m, 'このマップを複製', () => { const c = sanitizeMap(JSON.parse(JSON.stringify(M))); c.name = (M.name + ' のコピー').slice(0, 60); addMap(c); });
   mi(m, 'このマップを消す', () => askConfirm('このマップを消す', '「' + M.name + '」を消す。元には戻せない。', '消す', () => {
     const id = store.cur; delete store.maps[id]; store.order = store.order.filter(x => x !== id);
-    if (!store.order.length) addMap(newMap()); else openMap(store.order[0]);
+    if (!store.order.length) addMap(newMap()); else { const f = curFilter(); openMap(store.order.find(x => !f || tagOf(x) === f) || store.order[0]); }
     saveNow();
   }));
 }));
